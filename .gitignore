@@ -28,3 +28,16 @@ htmlcov/
 
 # Logs
 *.log
+# Android and local data
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.db
+*.db-shm
+*.db-wal
+*.jks
+*.keystore
+*.apk
+*.aab
+data/
