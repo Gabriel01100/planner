@@ -64,7 +64,16 @@ jobs:
           arch: x86_64
           target: google_apis
           working-directory: android
-          script: ./gradlew --stacktrace connectedDebugAndroidTest
+          script: |
+            adb shell input keyevent 82
+            ./gradlew --stacktrace connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-device-reports
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
   release:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: [backend, android, android-device]

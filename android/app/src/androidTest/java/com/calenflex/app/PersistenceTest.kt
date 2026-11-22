@@ -26,5 +26,6 @@ class PersistenceTest {
         assertEquals(state, json.decodeFromString<State>(row.payload))
         reopened.close()
         context.deleteDatabase(name)
+        Unit
     }
 }
