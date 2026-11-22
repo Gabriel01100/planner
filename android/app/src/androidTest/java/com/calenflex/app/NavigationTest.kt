@@ -12,6 +12,7 @@ class NavigationTest {
         compose.onNodeWithContentDescription("Crear actividad").performClick()
         compose.onNodeWithText("Título").performTextInput("Prueba local")
         compose.onNodeWithText("Guardar actividad").performScrollTo().performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Prueba local").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Prueba local").assertIsDisplayed()
         compose.onNodeWithContentDescription("Calendario").performClick()
         compose.onNodeWithText("Semana").assertIsDisplayed()

@@ -35,7 +35,7 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+      - run: chmod +x gradlew && ./gradlew --stacktrace testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
         working-directory: android
       - uses: actions/upload-artifact@v4
         with:
@@ -57,9 +57,9 @@ jobs:
           arch: x86_64
           target: google_apis
           working-directory: android
-          script: ./gradlew connectedDebugAndroidTest
+          script: ./gradlew --stacktrace connectedDebugAndroidTest
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: [backend, android, android-device]
     runs-on: ubuntu-24.04
     permissions:
