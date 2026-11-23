@@ -1,71 +1,117 @@
-# CalenFleX 1.1
+# CalenFleX 1.2
 
-Planificación personal y memoria de aprendizaje, con Android nativo y backend propio. Esta evolución conserva la agenda anterior y agrega objetivos, sesiones confirmadas, recursos, próximos pasos e integración MCP compatible con herramientas de ChatGPT.
+Asistente personal de productividad y aprendizaje: Android nativo, memoria educativa y backend propio. Organiza horarios, registra sesiones y propone próximos pasos con evidencia. Mantiene una interfaz simple y exige revisión para cambios importantes.
 
-**[Descargar APK desde Releases](https://github.com/Gabriel01100/planner/releases)** · [Hoja de ruta y evidencia por etapa](docs/EVOLUTION_ROADMAP.md)
+[Descargar APK validado](https://github.com/Gabriel01100/planner/releases) · [Estado real y roadmap](docs/ROADMAP.md) · [Pruebas](docs/TESTING.md)
 
-## Uso en Android
+## Funciones y estado
 
-Requiere Android 8 o posterior. Descargar CalenFleX-debug.apk desde una prerelease cuya ejecución de Actions haya aprobado backend, compilación y dispositivo. Es una compilación de depuración, no una publicación en Play Store.
+- **Hoy:** próxima actividad, horario/duración/objetivo, comenzar y finalizar sesión con tiempo corregible.
+- **Agenda:** calendario mensual real y vistas de semana/día con bloques por hora, disponibilidad y bloqueos. CRUD, recurrencias, dependencias, restricciones y previsualización conservados.
+- **Objetivos:** sesiones, contenidos, ejercicios, dificultades, recursos y próximos pasos. Competencias solo con resultados evaluados explícitos y confianza declarada; importar texto no demuestra dominio.
+- **Asistente:** propuestas Responses estructuradas y revisables, sin escrituras directas. Share Intent de texto, enlaces y documentos abre una revisión antes de analizar/guardar.
+- **Autonomía acotada:** desactivada por defecto. El usuario autoriza movimientos pequeños del mismo día con presupuesto semanal y reversión. Cambios importantes siguen requiriendo aprobación.
+- **Sync:** cambios independientes se fusionan; conflictos incompatibles conservan base/local/remoto exportables. Cola e intentos sobreviven a cierres/pérdidas de respuesta.
+- **MCP:** 19 herramientas, OAuth/JWT/scopes y vinculación del espacio móvil mediante doble posesión y PKCE. Requiere configurar proveedor/hosting y consentimiento reales.
 
-- **Hoy:** próxima actividad, comenzar y finalizar sesión. El tiempo medido se puede corregir; una actividad general se puede completar sin inventar un objetivo educativo.
-- **Agenda:** calendario y CRUD de actividades, con opciones avanzadas desplegables. La reorganización se previsualiza y requiere aceptación.
-- **Objetivos:** crear, registrar progreso y recursos, consultar tiempos reales y próximos pasos, corregir y eliminar con confirmación.
-- **Asistente:** conversación breve y propuestas editables. El progreso del objetivo se comparte solo si se habilita expresamente.
+Sin conexión funcionan los registros y consultas locales. IA, generación de planes y sincronización necesitan backend HTTPS. No se ha conectado una cuenta real de ChatGPT, contratado hosting ni usado una clave paga de IA. CP-SAT sigue experimental. APK debug; no es una publicación en Play Store. Capturas reales del calendario se generan en el job de dispositivo, artefacto Android-device-reports; no se presentan mockups como capturas.
 
-Configuración y estadísticas están en la cabecera. Sin conexión, agenda, objetivos y registros locales siguen disponibles. Los comandos educativos quedan en Room y se sincronizan con IDs estables. El asistente, análisis de documentos, generación de planes y sincronización necesitan un backend HTTPS configurado.
+## Arquitectura y tecnologías
 
-Compartir desde ChatGPT, NotebookLM, un navegador o un lector compatible abre una revisión de texto, enlaces o documentos. No se leen conversaciones privadas ni se descargan enlaces automáticamente. Analizar no equivale a guardar. [Guía de Android e importación](docs/ANDROID_IMPORT.md).
+Compose → AppViewModel → repositorios/Room → REST; ChatGPT → MCP → los mismos servicios de dominio. LearningWorkflow coordina aprendizaje y agenda en una transacción. SQLAlchemy guarda agregados versionados, cifrados en producción. El motor y su validador comparten reglas. El agente solo devuelve propuestas tipadas. [Diagrama y responsabilidades](docs/ARCHITECTURE.md).
 
-Antes de desinstalar o cambiar entre APK de depuración con firmas diferentes, exportar **agenda y aprendizaje** desde Configuración. Android puede exigir desinstalar si la firma cambió. Las actualizaciones de distribución necesitan una clave privada estable, que no se incluye en Git.
+Python 3.12, FastAPI/Pydantic, SQLAlchemy, SQLite/PostgreSQL 17 (psycopg), MCP oficial, JWT RS256 y Responses API. Android: Kotlin 2.1.20, Compose Material 3, Room, DataStore, Retrofit y WorkManager; JDK 17, SDK 35, Gradle 8.13. OR-Tools es opcional, fuera del backend de producción.
 
-## Backend local y pruebas
+```text
+backend/app/          servicios, contratos, reglas, REST/MCP, web de vinculación
+backend/tests/        suite principal
+backend/integration/  PostgreSQL real y transferencia
+backend/experiments/  comparación opcional del optimizador
+backend/webtests/     protocolo web OAuth simulado
+android/              app nativa y pruebas JVM/dispositivo
+deploy/               proxy TLS
+.github/workflows/    CI y APK condicionado a validación
+docs/                 contratos, operación, decisiones y evidencia
+```
 
-Python 3.12. Para desarrollo:
+## Instalación local del backend
+
+Requiere Python 3.12. Desde la raíz:
 
 ```sh
 python -m venv .venv
 . .venv/bin/activate
 pip install -r backend/requirements.txt
-export CALENFLEX_TOKEN="tu-token-privado-largo"
-cd backend
-python -m app.manage migrate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+cp .env.example .env
 ```
 
-Consultar `/docs` para contratos y autorización. CALENFLEX_TOKEN conserva el espacio histórico personal. Los tokens nuevos son revocables, tienen scopes y se almacenan por hash. El servidor selecciona el usuario autenticado; ningún JSON puede elegir owner. Las versiones antiguas de Android conservan la API de agenda y no pueden borrar la memoria educativa nueva.
+Configurar variables en el entorno del proceso o un gestor de secretos; uvicorn directo **no carga .env automáticamente**. Para desarrollo local:
 
 ```sh
-PYTHONPATH=backend pytest -q backend/tests
+export CALENFLEX_TOKEN="CAMBIAR-POR-UN-TOKEN-LOCAL-ALEATORIO"
+export DATABASE_URL="sqlite:///./calenflex.db"
+export CALENFLEX_ENV=development
+cd backend
+python -m app.manage migrate
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+Abrir http://127.0.0.1:8000/docs. /health indica proceso vivo; /ready comprueba base. Sin bearer las rutas protegidas se rechazan. Development sin clave de cifrado guarda texto claro: no usar esa configuración como servicio público.
+
+| Variables | Uso |
+| --- | --- |
+| CALENFLEX_TOKEN | token histórico del espacio personal; generar aleatorio |
+| DATABASE_URL | SQLite local o postgresql+psycopg; no cambia ni migra datos automáticamente |
+| CALENFLEX_ENV, CALENFLEX_DATA_KEY | producción exige clave Fernet, respaldada por separado |
+| AI_API_KEY, AI_BASE_URL, AI_MODEL, AI_REQUESTS_PER_HOUR | IA opcional y cuota por owner/proceso |
+| OAUTH_ISSUER, OAUTH_JWKS_URL, OAUTH_RESOURCE_URL | proveedor real y audiencia HTTPS exacta de MCP |
+| OIDC_LINK_CLIENT_ID, OIDC_AUDIENCE_PARAMETER | cliente público PKCE de /connect; sin client secret |
+| PUBLIC_DOMAIN, POSTGRES_PASSWORD | despliegue Compose de producción |
+| CORS_ORIGINS, ALLOWED_HOSTS | origins explícitos y hosts permitidos |
+
+.env.example contiene nombres sin secretos. Nunca pegar credenciales en chat/Git ni en Kotlin. Los tokens administrados se emiten con `python -m app.manage issue-token --owner IDENTIDAD --scopes memory:read schedule:read --label dispositivo`; usar solo scopes necesarios y transferir la credencial por un canal privado.
+
+## Android y APK
+
+Requiere Android 8/API 26+. Abrir `android` en Android Studio con JDK 17/SDK 35, o compilar:
+
+```sh
 cd android
-./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
 ./gradlew connectedDebugAndroidTest  # emulador o dispositivo conectado
 ```
 
-Android usa JDK 17, SDK 35, Kotlin 2.1.20, Compose/Material 3, MVVM, Room, DataStore, Retrofit y WorkManager. El wrapper descarga Gradle 8.13 y verifica su checksum. APK local: android/app/build/outputs/apk/debug/app-debug.apk.
+APK local: android/app/build/outputs/apk/debug/app-debug.apk. Descargar una prerelease cuyo CI esté aprobado. **Antes de instalar otra firma debug, exportar agenda y aprendizaje**: Android puede exigir desinstalar. La firma estable de distribución no se incluye en Git.
 
-## Servidor, cifrado e integración con ChatGPT
+En Configuración guardar URL HTTPS del servidor y credencial del propio espacio; se verifica identidad. No usar localhost desde el teléfono. Usar el asistente solo cuando AI_* esté configurado en servidor. [Android](docs/ANDROID.md), [calendario y UX](docs/UX.md), [importación](docs/ANDROID_IMPORT.md).
 
-Para usar el teléfono sin una computadora encendida, desplegar el backend en un servidor HTTPS permanente. No se ha contratado ni desplegado ese hosting. Configurar la URL y el token de su espacio en Android.
+## Docker, PostgreSQL y HTTPS
 
-En producción, definir CALENFLEX_ENV=production y una CALENFLEX_DATA_KEY Fernet válida, guardada en un gestor de secretos y respaldada por separado. Las migraciones cifran agenda, memoria y propuestas sin reemplazar sus registros ni revisiones. Una clave incorrecta detiene la apertura; no produce una base vacía. En desarrollo, sin clave, los datos son texto claro. [Despliegue y recuperación](docs/DEPLOYMENT.md).
+Definir secretos reales en .env, incluida CALENFLEX_DATA_KEY. Desarrollo con volumen SQLite: `docker compose up -d --build` (escucha en 127.0.0.1:8000). Producción necesita PUBLIC_DOMAIN/DNS, POSTGRES_PASSWORD URL-safe y puertos 80/443:
 
-MCP Streamable HTTP se habilita en `/mcp` al configurar OAUTH_ISSUER, OAUTH_JWKS_URL y OAUTH_RESOURCE_URL HTTPS de un proveedor OAuth/OIDC real. Verifica firma RS256, emisor, audiencia, expiración y permisos. Hay 19 herramientas, incluidas las 17 solicitadas, para registrar sesiones y consultar progreso/agenda. [Guía de conexión con ChatGPT](docs/MCP.md).
+```sh
+docker compose -f docker-compose.yml -f docker-compose.production.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+```
 
-Las pruebas usan credenciales y proveedores simulados. No se declara conectado a una cuenta real de ChatGPT ni publicado en el directorio de apps. La disponibilidad de conectores de desarrollo depende de la cuenta. La suscripción de ChatGPT no proporciona una clave de API ni acceso a conversaciones privadas.
+Incluye PostgreSQL persistente, Caddy/TLS y readiness. [Despliegue, backup, restore y rollback](docs/DEPLOYMENT.md). Si ya hay datos SQLite, no cambiar DATABASE_URL sin [transferencia offline a destino vacío](docs/DATABASE.md). Un worker; escalar requiere cuotas distribuidas. DNS/hosting/TLS públicos siguen siendo configuración externa.
 
-## IA y planificación
+## ChatGPT y MCP
 
-Configurar AI_API_KEY, AI_BASE_URL, AI_MODEL y AI_REQUESTS_PER_HOUR en el servidor para propuestas reales con Responses API y Structured Outputs. Sin clave, el trabajo local y el registro manual continúan. El backend no guarda por analizar; las propuestas se validan y revisan antes de pasar a servicios de dominio. No se ejecuta SQL ni instrucciones de documentos.
+Registrar proveedor/API OAuth, cliente público PKCE para `https://TU_DOMINIO/connect` y configurar las variables. Desde Android crear código de vinculación, abrir /connect, ingresar con el proveedor y confirmar ambas conexiones. Luego agregar /mcp en una cuenta de ChatGPT compatible y completar su consentimiento OAuth con la misma identidad. La vinculación no instala la app en ChatGPT ni concede acceso a conversaciones privadas. [Procedimiento exacto, scopes y herramientas](docs/MCP.md).
 
-El motor original sigue en producción. Un envoltorio conserva sesiones válidas durante la reorganización. CP-SAT se evaluó en veinte escenarios simplificados: 83 tareas programadas frente a 71 del motor actual. No es una prueba de superioridad general y no se activó. [Evaluación y límites de autonomía](docs/OPTIMIZATION.md).
+## Pruebas y colaboración
 
-Las sugerencias de comportamiento se basan en registros suficientes y muestran evidencia; no castigan omisiones ni alteran prioridades por su cuenta. El modo totalmente autónomo no está disponible. La adaptación automática, dependencias del optimizador completo y reparto multiobjetivo continúan en la hoja de ruta.
+```sh
+PYTHONPATH=backend pytest -q backend/tests
+node --test backend/webtests/account-link.test.cjs
+# PostgreSQL desechable y optimizador se ejecutan con comandos de docs/TESTING.md.
+```
+
+CI valida backend/web, PostgreSQL, experimento, Android/JVM/lint y dispositivo. Solo publica APK si todo aprueba. Resultados/limitaciones: [TESTING.md](docs/TESTING.md). Las pruebas de proveedor son simuladas; las llamadas reales son opcionales y no se inventan resultados.
+
+Trabajar en rama y abrir PR con pruebas/decisiones/riesgos; no sobreescribir main. [CONTRIBUTING.md](CONTRIBUTING.md). El repositorio no declara una licencia de distribución: consultar al titular antes de redistribuirlo bajo otra licencia.
 
 ## Documentación
 
-- [Arquitectura y ADR](docs/ARCHITECTURE.md) · [Decisión de compatibilidad y cifrado](docs/adr/0001-learning-and-compatibility.md).
-- [API de agenda](docs/API.md) · [API educativa y propuestas](docs/LEARNING_API.md) · [MCP](docs/MCP.md).
-- [Android](docs/ANDROID.md) · [Nuevo flujo e importación](docs/ANDROID_IMPORT.md) · [Revisión UX](docs/UX_EVOLUTION.md).
-- [IA](docs/AI_INTEGRATION.md) · [Base de datos](docs/DATABASE.md) · [Despliegue](docs/DEPLOYMENT.md).
-- [Resultados realmente ejecutados y limitaciones](docs/VALIDATION.md) · [Roadmap](docs/EVOLUTION_ROADMAP.md).
+[Arquitectura](docs/ARCHITECTURE.md) · [Datos/migraciones](docs/DATABASE.md) · [REST](docs/API.md) · [Memoria](docs/LEARNING_API.md) · [MCP](docs/MCP.md) · [IA](docs/AI.md) · [Planificador](docs/PLANNER.md) · [Sincronización](docs/SYNC.md) · [Android](docs/ANDROID.md) · [Seguridad](docs/SECURITY.md) · [Despliegue](docs/DEPLOYMENT.md) · [Pruebas](docs/TESTING.md) · [UX](docs/UX.md) · [Roadmap](docs/ROADMAP.md) · [ADR](docs/adr/0002-consolidation.md).

@@ -1,21 +1,19 @@
 # Android
 
-Kotlin 2.1.20, AGP 8.9.2, Gradle 8.13, SDK 35 y mínimo API 26. Jetpack Compose Material 3 y Navigation Compose para cinco destinos. AndroidViewModel/StateFlow publica cambios de Room y coordina la capa de datos; Retrofit usa el mismo contrato JSON que FastAPI. DataStore conserva configuración de conexión y token cifrado con una clave local Android Keystore.
+Kotlin 2.1.20, Compose Material 3, Navigation Compose, Room 3 (versión de esquema, no versión de librería), DataStore, Retrofit y WorkManager. JDK 17, Gradle 8.13, AGP 8.9.2, SDK/target 35, mínimo Android 8/API 26. No hay claves de IA en Gradle/Kotlin ni en copias. Compilar:
 
-Los datos se guardan en SQLite mediante Room en una transacción por documento. El usuario puede cerrar la app sin perder los cambios confirmados. La revisión y el indicador dirty se guardan juntos. Una escritura de plan comprueba que el documento coincide con el que se envió al servidor. Las copias JSON incluyen datos y preferencias, sin credenciales de conexión.
+```sh
+cd android
+./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+./gradlew connectedDebugAndroidTest
+```
 
-WorkManager sincroniza con conectividad de red cada 15 minutos como mínimo. Los recordatorios se programan por fecha local en la zona elegida. Cambiar actividades, preferencias o planificación recalcula recordatorios. Antes de notificar, el worker consulta de nuevo el registro y descarta actividades completadas/canceladas. Android 13 o posterior necesita permiso POST_NOTIFICATIONS.
+APK: app/build/outputs/apk/debug/app-debug.apk. Abrir el directorio android en Android Studio y sincronizar Gradle. En Configuración guardar URL HTTPS y credencial del propio espacio; se verifica identidad antes de aceptar un cambio de credencial. No usar localhost desde un teléfono. El trabajo local no requiere servidor, pero IA/planificación/sync sí.
 
-El APK de debug funciona sin credenciales para las operaciones locales. Para planificar e IA se configura un servidor HTTPS accesible desde el teléfono, no localhost ni una computadora que deba quedar encendida.
+AppViewModel coordina guardados, errores y carga. LearningWorkflow del servidor y una transacción Room local conservan coherencia entre una sesión finalizada y su agenda. Los errores no cierran formularios importantes. Cancelación de corrutinas se propaga. Pantallas y componentes están separados por responsabilidad; persiste un ViewModel de aplicación compartida, sin capas genéricas artificiales.
 
-## Pruebas
+Room migra 1→2→3 sin destrucción. Agenda y aprendizaje tienen agregados y revisiones independientes. Cola educativa y comando de sincronización son persistentes. SYNC.md describe conflictos y recuperación. Android asocia la instalación a un espacio; no es un selector multicuenta.
 
-Tests JVM de contratos, validaciones e importación. Tests instrumentados de reapertura de base Room y navegación con creación de actividad. Ejecutar `./gradlew connectedDebugAndroidTest` con dispositivo API 26+; el workflow usa API 35.
+WorkManager sincroniza cada 15 minutos como mínimo, con red. Solo después de sincronizar solicita el ajuste automático al servidor, que comprueba consentimiento y límites. Las notificaciones se recalculan al editar/planificar/sincronizar y el worker verifica de nuevo que la actividad siga vigente. POST_NOTIFICATIONS se exige desde API 33, no en versiones anteriores. El sistema puede demorar tareas por batería; no son alarmas exactas. Validar también en un teléfono real.
 
-## Modelo de base
-
-Tabla `workspace`: `id`, `payload`, `revision`, `dirty`. Una fila por instalación. El payload State v1 contiene actividades con UUID, recurrencias y excepciones, disponibilidad, bloqueos, horarios y ocurrencias completadas, preferencias, pendientes e historial. Room genera el esquema en `app/schemas`. Una versión futura debe agregar migraciones explícitas, nunca migración destructiva.
-
-# Versión 1.1
-
-La descripción de cinco destinos y Room v1 es histórica. Actualmente hay cuatro destinos principales, accesos secundarios para gestión/configuración y Room v2 con MIGRATION_1_2 explícita. Se conservan el CRUD, calendario, estadísticas, agenda offline y copias anteriores. La memoria educativa, comandos pendientes y sesión en curso usan learning_cache, con revisiones independientes de agenda. Ver ANDROID_IMPORT.md para flujos, copias y limitaciones.
+Vistas de calendario y accesibilidad: UX.md. Recepción/importación y copias educativas: ANDROID_IMPORT.md. Antes de cambiar entre APK debug con firmas diferentes, exportar agenda y aprendizaje: puede requerirse desinstalación. La firma estable de producción y Play Store no están configuradas.

@@ -1,51 +1,35 @@
-# Validación de la entrega
+# Pruebas y evidencia
 
-## Ejecutado localmente
+Base auditada ab48550: 112 backend y 18 JVM reejecutadas, compilación/lint aprobados. Los seis instrumentados previos aprobaron en Actions 45117900855, incluidos los dos fallos históricos corregidos. No se confunde esa ejecución con la validación nueva.
 
-- Backend: `PYTHONPATH=backend pytest -q backend/tests`: **71 pruebas aprobadas**. Incluyen 40 escenarios aleatorios con verificación independiente de ocupación, recurrencias, excepciones, bloqueo fijo, restricciones y validación; API, persistencia tras reiniciar, rotación de credencial, control de revisión y proveedores de IA simulados.
-- Android: `assembleDebug`, `testDebugUnitTest`, `lintDebug`, `assembleDebugAndroidTest`: compilación aprobada. **13 pruebas JVM aprobadas**, sin errores. Tests de contratos, copias, validación, cálculo de espacios libres, repositorio, conflicto y rechazo de planes desactualizados.
-- Firma de APK de depuración: verificada con `apksigner verify`. Metadatos comprobados con `aapt dump badging`: paquete com.calenflex.app, mínimo API 26, target API 35.
-- Git: revisión de diferencias y búsqueda de patrones de credenciales; no se agregan .env, bases locales, keystores ni tokens al repositorio.
-- Lint advierte sobre versiones más nuevas de dependencias. Se mantienen las versiones estables compatibles que fueron compiladas y probadas.
+## Consolidación local
 
-## Instrumentación y servicios externos
+- Backend: **129 pruebas aprobadas localmente**. Incluye las 112 originales y regresiones de días permitidos, DST, colisiones con completadas, dependencias/carga, merge/reintento/aislamiento, evaluación explícita, vinculación JWT, autorización de preferencias, autonomía opt-in/reversión y coordinación agenda/memoria.
+- Android: assembleDebug, testDebugUnitTest, lintDebug y assembleDebugAndroidTest aprobados localmente. 21 JVM: 18 anteriores más calendario mensual/leap year y sincronización con respuesta perdida/conflicto exportable.
+- PostgreSQL 17: cuatro integraciones reales aprobadas: migración/cifrado/aislamiento, concurrencia CAS, reintento/reapertura y transferencia SQLite→PostgreSQL a destino vacío.
+- OAuth web: dos tests Node aprobados con proveedor simulado: PKCE S256/state/recurso/confirmación y rechazo de estado incorrecto/vencido. No son una conexión externa real.
+- CP-SAT: una prueba comparativa cubre nueve escenarios con entradas/reglas/métricas iguales; ambos motores dieron cero conflictos. Resultado reproducible en benchmarks/equivalent-evaluation.json; no demuestra superioridad global.
+- Backup: pg_dump/pg_restore ejecutados en bases de prueba separadas PostgreSQL 17; revisión y memoria verificadas. Configuración Compose/Caddy validada con valores ficticios. Imagen Docker compilada y /ready comprobado contra PostgreSQL con cifrado production, filesystem de solo lectura y capabilities eliminadas; sin publicar servicios en Internet. El proxy de este entorno requirió proporcionar su CA al build mediante secreto BuildKit, sin desactivar TLS.
 
-Los tests instrumentados de Room y de navegación/creación están implementados y su APK compila. Esta máquina no tiene /dev/kvm; **no se ejecutaron en un emulador local**. El workflow incluye un job de emulador para ejecutarlos en GitHub Actions. El estado de cada ejecución en Actions es la fuente de verdad; compilar los tests no equivale a ejecutarlos.
+## Comandos
 
-No se realizaron consultas pagas a un proveedor de IA ni se desplegó un backend público: requieren credenciales y hosting. Las notificaciones necesitan comprobarse también en un teléfono real, con permisos, restricciones de batería y sistema del fabricante. No se declara validada la experiencia en todos los dispositivos.
+```sh
+pip install -r backend/requirements.txt
+PYTHONPATH=backend pytest -q backend/tests
+node --test backend/webtests/account-link.test.cjs
+# Solo una base desechable, nunca una URL de producción:
+TEST_POSTGRES_URL=postgresql+psycopg://USUARIO:CLAVE@localhost/BASE_DE_PRUEBA PYTHONPATH=backend pytest -q backend/integration
+pip install -r backend/requirements-optimization.txt
+PYTHONPATH=backend pytest -q backend/experiments/test_equivalence.py
+cd android
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew connectedDebugAndroidTest
+```
 
-## Límites funcionales conocidos
+Los tests PostgreSQL crean/eliminan exclusivamente esquemas cf_test_UUID de la base de prueba. No ejecutarlos con credenciales de producción. Lint conserva advertencias de dependencias nuevas disponibles; no hay errores. pytest advierte una deprecación del cliente Starlette/httpx; no invalida resultados ni se oculta.
 
-- El motor es voraz y determinista; no garantiza óptimo global. Busca en una rejilla de cinco minutos y limita el horizonte a 93 días y la cantidad de ocurrencias a 10000 por petición.
-- El calendario muestra listas de días agrupadas por el período elegido; no hay grilla mensual ni arrastrar y soltar.
-- Disponibilidad y bloqueos expresan sueño, descanso y ocupaciones; no hay asistentes separados para esas categorías.
-- Los conflictos se muestran al previsualizar y no se permite aplicar un plan inválido. No hay una categoría independiente de notificación push para conflictos.
-- Los pendientes se reintentan al generar/reorganizar otra planificación semanal. No hay un comando separado para reintentar únicamente una ocurrencia sin regenerar las demás.
-- La IA tiene una interfaz de proveedor y un adaptador OpenAI-compatible; otros protocolos requieren implementar otro adaptador.
-- Las copias JSON reemplazan el espacio local con confirmación; no se fusionan automáticamente. El token y la URL del servidor se configuran por separado.
-- Los tiempos realizados se infieren de la duración planificada de las ocurrencias completadas. No hay cronómetro ni medición automática del trabajo.
-- Los resúmenes usan periodicidad de WorkManager, sin una hora exacta ni alarmas garantizadas.
-- Servidor personal con token único y SQLite. No es una plataforma multiusuario ni tiene login social.
-- El APK usa firma de depuración. No hay publicación en Play Store ni firma de distribución administrada.
+## CI y dispositivo
 
-Esta entrega contiene una implementación funcional desde cero, pero las validaciones pendientes y estos límites impiden afirmar que cumple íntegramente todos los criterios del documento original.
+CI exige backend + OAuth web, PostgreSQL, experimento y Android; el emulador API 35 ejecuta los seis tests existentes más un flujo de grilla mensual → día → evento → semana. Incluye migración Room 1→3 y copia de agenda histórica. No hay tests desactivados. Este entorno no tiene KVM: la ejecución real de dispositivo se realiza en Actions. Los reportes y capturas del calendario están en el artefacto Android-device-reports. El resultado de la ejecución enlazada en el PR es la fuente de verdad; compilar instrumentados no equivale a ejecutarlos.
 
-# Evolución 1.1 — resultados de esta entrega
-
-Las cifras y límites anteriores corresponden a la primera versión y se conservan como registro histórico. La evolución agregó:
-
-- Backend: **112 pruebas aprobadas localmente**, incluidas las 71 anteriores. Cobertura nueva de sesiones, recursos, idempotencia, referencias/ciclos, evidencia sin dominio inventado, usuario/scopes/revocación, migración desde la base original, cifrado y clave incorrecta, protocolo MCP HTTP, JWT, propuestas Responses simuladas, material adversarial, PDF aislado, cuota de IA, conservación/reversión de planes y sugerencias sin escritura.
-- Android: **18 pruebas JVM aprobadas localmente**. Se mantienen las 13 anteriores y se agregan cola educativa persistente, reintento tras commit remoto, duración desconocida, sesión activa, copias y protección frente a regresión remota.
-- Compilación local ejecutada: assembleDebug, testDebugUnitTest, lintDebug y assembleDebugAndroidTest. Lint sin errores; continúan advertencias de actualizaciones de dependencias.
-- Se implementaron seis pruebas instrumentadas para navegación/CRUD, aprendizaje offline con recreación de Activity, recepción explícita de texto, persistencia Room, migración real 1→2 y rechazo de entradas compartidas inseguras. Su compilación no equivale a ejecución; el job android-device de Actions determina el resultado real.
-- CP-SAT: veinte escenarios simplificados ejecutados, 71 actividades programadas por la base y 83 por el experimento. No es una comparación completa ni demuestra superioridad general; no se cambia el motor de producción.
-
-No se hizo una conexión real a una cuenta de ChatGPT ni una consulta paga a OpenAI. No se desplegó hosting HTTPS ni PostgreSQL y no se generó una clave privada estable de distribución. La conexión MCP necesita proveedor OAuth real; las pruebas con JWT firmados y clientes HTTP prueban protocolo/aislamiento, no una instalación en el directorio de apps.
-
-## Pendientes explícitos
-
-Optimizador completo con dependencias, carga multiobjetivo y repasos espaciados; aplicación automática de adaptaciones bajo límites; login/vinculación OAuth móvil; validación PostgreSQL; producción HTTPS y firma de distribución. Las sugerencias de comportamiento actuales no modifican datos por su cuenta. Los recursos compartidos se guardan como referencias, no como evidencia automática de dominio. La navegación nueva conserva las funciones anteriores en accesos secundarios.
-
-## Primera ejecución de dispositivo de la evolución
-
-Actions 45117113872 aprobó backend y compilación/lint/JVM de Android. Ejecutó las seis pruebas instrumentadas: cuatro aprobadas y dos fallidas. La memoria offline con recreación y la migración Room 1→2 aprobaron. Se corrigió el retorno de la pestaña Agenda para evitar restaurar una pantalla secundaria y se agregó espera de visibilidad. El test Share Intent restaura su Intent de lanzamiento antes del cierre porque ActivityScenario filtra eventos por ese Intent; el receptor real conserva ACTION_SEND. No se eliminaron ni omitieron pruebas. La siguiente ejecución de Actions es la fuente de verdad del resultado tras estas correcciones.
+El APK de prerelease se genera solo si aprueban los cinco jobs. Es debug, no firma estable ni Play Store. Comprobar firma con apksigner y paquete/API con aapt. No se hicieron consultas pagas, conexión real ChatGPT/OAuth, despliegue público ni evaluación con participantes. Notificaciones y accesibilidad requieren también verificación en teléfonos reales de distintos fabricantes.

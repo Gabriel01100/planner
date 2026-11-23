@@ -1,46 +1,44 @@
-# CalenFleX y ChatGPT
+# MCP, ChatGPT y vinculación de identidad
 
-Servidor oficial MCP Python (FastMCP, Streamable HTTP) con herramientas y resultados JSON tipados. API de recurso en `/mcp`; metadatos OAuth en `/.well-known/oauth-protected-resource/mcp`. No es un lector de conversaciones ni utiliza la suscripción de ChatGPT como una clave de API.
+MCP oficial Python/FastMCP, transporte Streamable HTTP en `/mcp`; metadatos de recurso en `/.well-known/oauth-protected-resource/mcp`. Son herramientas compatibles con descriptores de seguridad de Apps SDK, sin widget embebido. No se leen conversaciones privadas ni se usa la suscripción de ChatGPT como clave API.
 
-## Configuración externa necesaria
+## Configuración reproducible del proveedor externo
 
-1. Desplegar el backend con HTTPS público y una base persistente.
-2. Configurar un servidor de autorización OAuth/OIDC que emita access tokens JWT RS256, con PKCE y consentimiento por usuario. Debe soportar el registro de clientes que requiera la instalación de ChatGPT, o permitir configurar el cliente explícitamente. No se implementa un proveedor OAuth propio ni un formulario de contraseñas en CalenFleX.
-3. Definir OAUTH_ISSUER, OAUTH_JWKS_URL y OAUTH_RESOURCE_URL. El recurso/audiencia debe ser la URL HTTPS exacta de MCP, por ejemplo la URL real de tu despliegue terminada en `/mcp`. Estas variables quedan vacías hasta tener un proveedor real. El servidor devuelve 503 si no están configuradas.
-4. Configurar en el proveedor los scopes mínimos `memory:read schedule:read`; agregar `memory:write` y `schedule:write` únicamente si se autorizan escrituras. `schedule:approve` y `preferences:write` son permisos separados para cambios importantes.
-5. En una cuenta de ChatGPT con soporte para apps/conectores MCP de desarrollo, agregar la URL MCP del despliegue y completar el consentimiento OAuth. La disponibilidad y el proceso de publicación de una app dependen de la cuenta y de las políticas de OpenAI. No se afirma que la app ya esté instalada o publicada en el directorio.
-6. Probar: listar objetivos, elegir uno explícitamente, registrar una sesión revisada, volver a consultar progreso y agenda. Verificar el usuario correcto antes de conectar datos personales.
+1. Desplegar HTTPS según DEPLOYMENT.md, con base persistente y clave de cifrado respaldada.
+2. Crear un recurso/API en un proveedor OAuth/OIDC real que emita **access tokens JWT RS256**. Audiencia exacta: `https://TU_DOMINIO/mcp`. Habilitar scopes memory:read/write, schedule:read/write/approve, preferences:write y consentimiento por usuario. El emisor debe coincidir exactamente con iss; conservar su barra final si la tiene. El servidor deriva identidad de emisor/sub verificados, nunca de un owner enviado por cliente.
+3. Configurar OAUTH_ISSUER, OAUTH_JWKS_URL y OAUTH_RESOURCE_URL. El proveedor debe permitir el registro/configuración de clientes que use ChatGPT y Authorization Code con PKCE. No se implementa un servidor de contraseñas propio. Sin estas variables `/mcp` devuelve 503.
+4. Para vincular el móvil, crear **otro cliente público SPA**, sin secret, con Authorization Code + PKCE S256. Redirect URI exacto `https://TU_DOMINIO/connect`; web origin/CORS exacto `https://TU_DOMINIO`. Permitir discovery OIDC y POST al token endpoint desde ese origin. Configurar OIDC_LINK_CLIENT_ID. OIDC_AUDIENCE_PARAMETER=resource usa RFC 8707; si el proveedor requiere audience, configurarlo explícitamente. El cliente pide openid y scopes de lectura/escritura de memoria/agenda. No pide refresh tokens ni guarda access tokens en disco.
+5. Reiniciar y comprobar `/ready`, discovery y `/api/v1/connections/link/config` (solo configuración pública). `/connect` realiza login, comprueba state/vencimiento, intercambia con PKCE y verifica la identidad mediante REST. No basta con un ID token u otro token de audiencia distinta.
 
-El SDK publica metadatos de seguridad por herramienta y anotaciones de lectura/escritura/operación importante compatibles con Apps SDK. Es una integración de herramientas; no contiene un widget web ni una UI embebida en ChatGPT.
+## Vincular Android y ChatGPT de forma segura
 
-## Identidad y permisos
+En Android Configuración → Crear código de vinculación. Demuestra posesión del espacio móvil con su token autenticado. El código aleatorio se guarda por hash, vence en cinco minutos y es de un solo uso. Abrir «Vinculación segura», ingresar con el proveedor y pegar el código **en /connect, nunca en una conversación**. Confirmar que ambas conexiones son propias. La operación se niega si la identidad OAuth ya tiene datos o está vinculada a otro espacio; no hace fusiones ni copias destructivas.
 
-Se verifican firma, emisor, audiencia, expiración, iat y sub. La identidad interna es SHA-256 del emisor y sujeto; dos usuarios no comparten memoria ni agenda. El cuerpo de una herramienta nunca puede escoger owner. No se aceptan tokens de OpenAI ni de otras audiencias. Los scopes se verifican de nuevo por herramienta y las revocaciones locales se consultan en cada llamada.
+El servidor asocia la identidad OAuth verificada al owner móvil existente. Mantiene todos los UUID y datos. El móvil conserva su token administrado; este flujo vincula identidades y no es un login nativo OAuth para reemplazar ese token. Otra identidad OAuth sigue aislada.
 
-El token histórico CALENFLEX_TOKEN sigue accediendo a personal para no perder datos. Los tokens administrativos nuevos se generan con `python -m app.manage issue-token --owner USUARIO --scopes memory:read schedule:read --label conexion`; se muestran una sola vez, se almacenan por hash y no deben pegarse en chats ni Git. Son útiles para pruebas o clientes administrados, no sustituyen el flujo OAuth de ChatGPT.
+Después, en una cuenta de ChatGPT que permita apps/conectores MCP de desarrollo, agregar `https://TU_DOMINIO/mcp` y completar el **consentimiento OAuth de ChatGPT** con la misma identidad vinculada. Autorizar solo permisos necesarios; lectura requiere memory:read y schedule:read, escritura añade scopes concretos. La vinculación no crea el consentimiento de ChatGPT ni da acceso automático a conversaciones.
 
-`POST /api/v1/connections/revoke` desconecta el token actual. La revocación del consentimiento completo también debe hacerse en el proveedor OAuth y en ChatGPT. Rotar o revocar una conexión no borra datos.
+Verificar desde ambas conexiones: listar objetivos, registrar una sesión revisada con requestId estable, consultar progreso y agenda. Volver a ejecutar el mismo requestId no duplica. Con una identidad diferente los datos deben seguir vacíos/no encontrados. Solo entonces declarar conectada esa cuenta real.
 
-## Herramientas
+Configuración → Ver conexiones vinculadas permite desvincular con confirmación. La identidad OAuth deja de acceder al espacio móvil sin borrar datos. Revocar además el consentimiento en proveedor/ChatGPT. `POST /api/v1/connections/revoke` revoca la credencial actual, no toda una familia de tokens futuros del proveedor.
 
-- `create_study_goal`, `create_milestone`, `create_study_session`.
-- `register_study_progress`: recibe goalId confirmado, requestId estable, tema, subtemas, comprensión reportada, refuerzo, dificultades, ejercicios, evaluación, tiempo conocido, siguientes pasos y fuente. confirmed=true requiere revisión explícita. No inventa dominio ni tiempo real desconocido.
-- `create_task`, `create_recurring_task`, `add_deadline`.
-- `get_schedule`, `get_today_plan`, `get_pending_tasks`.
-- `get_study_goals`, `get_goal_details`, `get_learning_progress`, `get_recommended_next_steps`.
-- `propose_reorganization`: persiste una propuesta de una hora de vigencia; no aplica cambios.
-- `approve_reorganization`: exige confirmación, permiso separado y la revisión original de agenda. Rechaza propuestas vencidas, repetidas o con conflictos. El cliente MCP debe solicitar la confirmación humana; la anotación no sustituye la autorización del servidor.
-- `create_study_plan`: crea una recurrencia para un objetivo confirmado; no asigna horarios automáticamente.
-- `update_user_preferences`: exige confirmación y revisión actual; no admite modo totalmente autónomo.
+## Contratos de herramientas
 
-## Verificación
+| Herramientas | Scope principal / comportamiento |
+| --- | --- |
+| create_study_goal, create_milestone, create_study_session | memory:write; UUID estable |
+| register_study_progress | memory:write; requestId y goalId revisados, confirmed=true; tiempo desconocido=null; evaluación opcional con resultados/método/confianza declarada |
+| create_task, create_recurring_task | schedule:write; no reorganizan otros compromisos |
+| add_deadline | schedule:write; revisión y confirmación |
+| get_schedule, get_today_plan, get_pending_tasks | schedule:read; contexto acotado sin notas privadas |
+| get_study_goals, get_goal_details, get_learning_progress, get_recommended_next_steps, get_behavior_insights | memory:read; evidencia y estimaciones explícitas |
+| propose_reorganization | schedule:write; propuesta persistente, no aplica |
+| approve_reorganization | schedule:approve; confirmación y revisión actual |
+| create_study_plan | schedule:write + memory:read; recurrencia para objetivo confirmado, sin autoasignar horarios |
+| update_user_preferences | preferences:write; revisión y confirmación; fully_autonomous inválido |
 
-`PYTHONPATH=backend pytest -q backend/tests/test_mcp.py` ejecuta initialize, tools/list y tools/call sobre transporte HTTP real dentro de TestClient, con credenciales de prueba, JWT firmados localmente, validación de audiencia/emisor/expiración, scopes, aislamiento, deduplicación y aprobación versionada. No requiere ni demuestra una conexión real a una cuenta de ChatGPT.
+19 herramientas. Los argumentos y resultados son tipados, rechazan campos extra y no admiten SQL ni owner arbitrario. Los cambios importantes tienen anotaciones destructivas y autorización del servidor; una anotación no reemplaza confirmación humana. El SDK publica securitySchemes y metadatos de invocación. Herramientas/API comparten LearningWorkflow y AgendaService.
 
-## Evolución adicional y despliegue móvil
+## Estado real y pruebas
 
-`get_behavior_insights` agrega sugerencias con evidencia y sin escritura. Hay 19 herramientas en total: las 17 solicitadas y los auxiliares get_study_goals/get_behavior_insights. Las creaciones MCP exigen UUID estables (o requestId en create_study_plan) para que un reintento no duplique datos.
-
-La integración móvil usa tokens de acceso administrados por el servidor. Para que Android y OAuth vean el mismo espacio, emitir el token Android para el owner que deriva del emisor y sub verificados del usuario OAuth: SHA-256 de `issuer_sin_barra_final + '|' + sub`. Hacer esta configuración en el servidor, sin pegar tokens en ChatGPT. El espacio histórico personal se conserva; su traslado o importación a otra identidad debe ser explícito y respaldado. No se implementó inicio de sesión OAuth móvil ni vinculación automática de cuentas.
-
-Las cuotas de IA se comparten entre el asistente anterior y Responses. La cuota y la limitación general son por proceso: en un despliegue con varios workers se requiere también limitación distribuida en el gateway/proveedor para un presupuesto global estricto.
+Tests HTTP MCP: initialize/tools/list/tools/call, esquemas, registro y deduplicación, scopes, usuario ajeno, JWT firmado, emisor/audiencia/vencimiento, vinculación de un sujeto firmado con el espacio móvil y propuestas/aprobación/reversión. Dos tests Node verifican PKCE/state/claim con proveedor simulado. No se ha configurado un proveedor externo ni conectado una cuenta real de ChatGPT. Pasos manuales pendientes: dominio/TLS, registro de ambos clientes, emisión real JWT y consentimiento en la cuenta de ChatGPT. No enviar secretos al chat para hacerlos.
