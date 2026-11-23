@@ -98,8 +98,8 @@ def migrate(engine):
         # Validate every existing envelope first, then rewrite legacy plaintext in the same transaction.
         from sqlalchemy import text
         transforms = []
-        for table, key, columns in [('documents', 'owner', ['payload']), ('learning_documents', 'owner', ['payload']), ('plan_proposals', 'id', ['payload', 'previous'])]:
-            for row in connection.exec_driver_sql(f"SELECT {key}, {', '.join(columns)} FROM {table}").mappings():
+        for table, keys, columns in [('documents', ['owner'], ['payload']), ('learning_documents', ['owner'], ['payload']), ('plan_proposals', ['id'], ['payload', 'previous']), ('sync_receipts', ['owner','request_id'], ['payload'])]:
+            for row in connection.exec_driver_sql(f"SELECT {', '.join(keys+columns)} FROM {table}").mappings():
                 updates = {}
                 for column in columns:
                     value = row[column]
@@ -107,10 +107,12 @@ def migrate(engine):
                     if protector and not value.startswith(PREFIX):
                         updates[column] = seal(value)
                 if updates:
-                    transforms.append((table, key, row[key], updates))
-        for table, key, identity, values in transforms:
+                    transforms.append((table, {key: row[key] for key in keys}, updates))
+        for table, identities, values in transforms:
             assignments = ', '.join(f'{column} = :{column}' for column in values)
-            connection.execute(text(f'UPDATE {table} SET {assignments} WHERE {key} = :identity'), dict(values, identity=identity))
+            condition = ' AND '.join(f'{key} = :identity_{key}' for key in identities)
+            parameters = dict(values, **{f'identity_{key}': value for key,value in identities.items()})
+            connection.execute(text(f'UPDATE {table} SET {assignments} WHERE {condition}'), parameters)
         existing = set(connection.execute(select(SchemaVersion.version)).scalars())
         for version in (1, 2, 3, 4, 5):
             if version not in existing:

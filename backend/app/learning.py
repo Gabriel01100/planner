@@ -30,8 +30,9 @@ class LearningService:
             return MemoryEnvelope(revision=row.revision if row else 0,
                                   memory=LearningMemory.model_validate_json(row.payload) if row else LearningMemory())
 
-    def mutate(self, owner, action, change, expected=None):
-        with Session(self.engine) as db:
+    def mutate(self, owner, action, change, expected=None, session=None):
+        from contextlib import nullcontext
+        with (nullcontext(session) if session is not None else Session(self.engine)) as db:
             row = db.get(LearningDocument, owner)
             revision = row.revision if row else 0
             if expected is not None and expected != revision:
@@ -54,7 +55,8 @@ class LearningService:
                 db.add(LearningDocument(owner=owner, payload=payload, revision=1))
             db.add(AuditEntry(id=str(uuid4()), owner=owner, action=action, at=utcnow().isoformat(), entity_id=str(entity_id)))
             try:
-                db.commit()
+                if session is None: db.commit()
+                else: db.flush()
             except IntegrityError:
                 db.rollback()
                 raise HTTPException(409, 'La memoria fue modificada por otra conexión')
@@ -99,7 +101,7 @@ class LearningService:
             return session.id, old is not None
         return self.mutate(owner, 'session.create', change)
 
-    def register_progress(self, owner, command: SessionRegistration):
+    def register_progress(self, owner, command: SessionRegistration, session=None):
         raw = command.model_dump(mode='json', exclude={'requestId', 'confirmed'}, exclude_defaults=True)
         fingerprint = hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         def change(memory):
@@ -166,7 +168,7 @@ class LearningService:
                         rationale='Propuesto al registrar la sesión; estimación revisable', isEstimate=True))
             memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=session_id))
             return session_id, False
-        return self.mutate(owner, 'progress.register', change)
+        return self.mutate(owner, 'progress.register', change, session=session)
 
     def register_resource(self, owner, command):
         raw = command.model_dump(mode='json', exclude={'requestId', 'confirmed'}, exclude_defaults=True)

@@ -19,6 +19,14 @@ def planning_router(agenda, access):
     write = access.owner_dependency('schedule:write')
     approve = access.owner_dependency('schedule:approve')
 
+    @router.post('/automatic')
+    def automatic(principal=Depends(access.principal_dependency('schedule:approve'))):
+        access.check(principal, 'schedule:write')
+        access.check(principal, 'schedule:read')
+        access.check(principal, 'memory:read')
+        from .autonomy import automatic_plan
+        return automatic_plan(agenda, principal.owner)
+
     @router.post('/preview', response_model=PlanResult)
     def preview(request: PlanRequest, owner=Depends(write)):
         try:

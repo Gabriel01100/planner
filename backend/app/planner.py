@@ -28,14 +28,10 @@ def validate(state, schedule):
     return sorted(set(errors))
 
 
-def plan(req: PlanRequest):
+def planning_jobs(req):
     state = req.state
     by_id = {a.id: a for a in state.activities}
     last = req.start + timedelta(days=req.days - 1)
-    now = req.now or datetime.now(ZoneInfo(state.preferences.timezone))
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=ZoneInfo(state.preferences.timezone))
-    now = now.astimezone(ZoneInfo(state.preferences.timezone))
     result = [s.model_copy(deep=True) for s in state.schedule
               if s.completed or by_id[s.activityId].status == 'Completada' or (not req.start <= s.date <= last and by_id[s.activityId].status != 'Cancelada')]
     retained = {(s.activityId, s.date) for s in result}
@@ -60,6 +56,18 @@ def plan(req: PlanRequest):
                     jobs.append((a, day, day))
     if len(jobs) > 10000:
         raise ValueError("Demasiadas ocurrencias: reducí el horizonte o las actividades (máximo 10000).")
+    return result, jobs, pending
+
+
+def plan(req: PlanRequest):
+    state = req.state
+    by_id = {a.id: a for a in state.activities}
+    last = req.start + timedelta(days=req.days - 1)
+    now = req.now or datetime.now(ZoneInfo(state.preferences.timezone))
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ZoneInfo(state.preferences.timezone))
+    now = now.astimezone(ZoneInfo(state.preferences.timezone))
+    result, jobs, pending = planning_jobs(req)
     occupied = {}
     for slot in result + state.blocked:
         occupied.setdefault(slot.date, []).append(slot)
@@ -74,6 +82,7 @@ def plan(req: PlanRequest):
         ordered.extend(ready)
         remaining = [job for job in remaining if job not in ready]
     jobs = ordered
+    candidate_checks = 0
     for a, first, end in jobs:
         if a.frequency == 'Única' and any(s.activityId == a.id for s in result):
             continue
@@ -85,6 +94,9 @@ def plan(req: PlanRequest):
                 continue
             starts = [a.fixedStart] if a.fixedStart is not None else range(0, 1440 - a.duration + 1, 5)
             for start in starts:
+                candidate_checks += 1
+                if candidate_checks > 200000:
+                    raise ValueError("La planificación excede 200000 candidatos; reducí el horizonte o las actividades")
                 stop = start + a.duration
                 if stop > 1440:
                     continue

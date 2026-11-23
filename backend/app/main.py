@@ -1,17 +1,16 @@
-import hashlib
-import hmac
 import json
 import os
 import threading
+import logging
 import time
-from collections import defaultdict, deque
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import Column, Integer, String, Text, create_engine, select, update
-from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy import text, update
+from sqlalchemy.orm import Session
 
 from .models import AIRequest, AIResponse, PlanRequest, State, SyncRequest
 from .planner import plan, validate
@@ -29,7 +28,6 @@ def create_app(database_url=None, token=None):
     engine = make_engine(database_url or os.getenv('DATABASE_URL', 'sqlite:///./calenflex.db'))
     migrate(engine)
     api_token = token if token is not None else os.getenv('CALENFLEX_TOKEN', '')
-    calls = defaultdict(deque)
     lock = threading.Lock()
 
     mcp_server = None
@@ -45,6 +43,26 @@ def create_app(database_url=None, token=None):
 
     app = FastAPI(title='CalenFleX', version='1.2.0', lifespan=lifespan)
 
+    origins = [v.strip() for v in os.getenv('CORS_ORIGINS', '').split(',') if v.strip()]
+    if origins:
+        from fastapi.middleware.cors import CORSMiddleware
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=['GET','POST','PUT'], allow_headers=['Authorization','Content-Type'], expose_headers=['X-Request-ID'])
+    hosts = [v.strip() for v in os.getenv('ALLOWED_HOSTS', '').split(',') if v.strip()]
+    if hosts:
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+
+    @app.middleware('http')
+    async def request_log(request: Request, call_next):
+        request_id = str(uuid4())
+        started = time.monotonic()
+        response = await call_next(request)
+        response.headers['X-Request-ID'] = request_id
+        route = request.scope.get('route')
+        logging.getLogger('calenflex').info(json.dumps({'event':'http','requestId':request_id,'method':request.method,
+            'route':getattr(route,'path','unmatched'),'status':response.status_code,'durationMs':round((time.monotonic()-started)*1000)}))
+        return response
+
     @app.middleware('http')
     async def body_limit(request: Request, call_next):
         # Enforce streamed size too; do not trust Content-Length.
@@ -59,11 +77,13 @@ def create_app(database_url=None, token=None):
     access = Access(engine, api_token)
     authorize = access.owner_dependency('schedule:write')
     read_agenda = access.owner_dependency('schedule:read')
-    service = LearningService(engine)
+    from .learning_workflow import LearningWorkflow
+    agenda = AgendaService(engine)
+    service = LearningWorkflow(LearningService(engine), agenda)
     app.state.access = access
     app.state.learning = service
     app.state.engine = engine
-    app.state.agenda = AgendaService(engine)
+    app.state.agenda = agenda
     from .synchronization import sync_router
     from .account_linking import linking_router
     app.include_router(sync_router(app.state.agenda, access))
@@ -72,9 +92,27 @@ def create_app(database_url=None, token=None):
     app.include_router(agent_router(service, access))
     app.include_router(planning_router(app.state.agenda, access))
 
+    @app.get('/connect', include_in_schema=False)
+    @app.get('/account-link.js', include_in_schema=False)
+    @app.get('/account-link.css', include_in_schema=False)
+    def account_link_page(request: Request):
+        from pathlib import Path
+        from fastapi.responses import FileResponse
+        name = {'/connect':'account-link.html','/account-link.js':'account-link.js','/account-link.css':'account-link.css'}[request.url.path]
+        return FileResponse(Path(__file__).parent/'web'/name, headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
+            'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'none'"})
+
     @app.get('/health')
     def health():
         return {'status': 'ok', 'aiAvailable': bool(os.getenv('AI_API_KEY'))}
+
+    @app.get('/ready')
+    def ready():
+        try:
+            with engine.connect() as connection: connection.execute(text('SELECT 1'))
+        except Exception:
+            raise HTTPException(503, 'Base de datos no disponible')
+        return {'status':'ready','schemaVersion':5}
 
     @app.post('/api/plan', dependencies=[Depends(authorize)])
     @app.post('/api/reorganize', dependencies=[Depends(authorize)])
@@ -112,6 +150,14 @@ def create_app(database_url=None, token=None):
                 for activity in req.state.activities:
                     if 'goalId' not in activity.model_fields_set and activity.id in old_by_id:
                         activity.goalId = old_by_id[activity.id].goalId
+                    if 'dependencies' not in activity.model_fields_set and activity.id in old_by_id:
+                        activity.dependencies = old_by_id[activity.id].dependencies
+                if 'maxDailyMinutes' not in req.state.preferences.model_fields_set:
+                    req.state.preferences.maxDailyMinutes = previous.preferences.maxDailyMinutes
+            try:
+                State.model_validate(req.state.model_dump(mode='json'))
+            except ValueError:
+                raise HTTPException(422, 'La actualización legacy elimina una dependencia existente; revisá las actividades relacionadas')
             payload = req.state.model_dump_json()
             if doc is None:
                 db.add(Document(owner=owner, revision=1, payload=payload))
@@ -143,7 +189,7 @@ def create_app(database_url=None, token=None):
         except (httpx.HTTPError, ValueError, KeyError, IndexError):
             raise HTTPException(502, 'El proveedor de IA no respondió con datos válidos. Intentá nuevamente.')
 
-    issuer = os.getenv('OAUTH_ISSUER', '').rstrip('/')
+    issuer = os.getenv('OAUTH_ISSUER', '')
     resource = os.getenv('OAUTH_RESOURCE_URL', '').rstrip('/')
     jwks = os.getenv('OAUTH_JWKS_URL', '')
     if issuer and resource and jwks:

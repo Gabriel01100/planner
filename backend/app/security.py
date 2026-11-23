@@ -51,7 +51,7 @@ class Access:
             credential = db.get(Credential, hashed)
             if credential and not credential.revoked:
                 return Principal(credential.owner, frozenset(credential.scopes.split()), hashed)
-        issuer = os.getenv('OAUTH_ISSUER', '').rstrip('/')
+        issuer = os.getenv('OAUTH_ISSUER', '')
         audience = os.getenv('OAUTH_RESOURCE_URL', '').rstrip('/')
         jwks = os.getenv('OAUTH_JWKS_URL', '')
         if issuer and audience and jwks:
@@ -68,7 +68,7 @@ class Access:
                 if not isinstance(subject, str) or not subject or not isinstance(claims.get('scope', ''), str):
                     raise ValueError('Identidad inválida')
                 scopes = frozenset(claims.get('scope', '').split()) & SCOPES
-                identity = digest(issuer + '|' + subject)
+                identity = digest(issuer.rstrip('/') + '|' + subject)
                 with Session(self.engine) as db:
                     link = db.get(AccountLink, identity)
                     owner = link.owner if link else identity

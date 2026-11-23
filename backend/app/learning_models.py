@@ -118,7 +118,9 @@ class NextStep(Contract):
     isEstimate: bool = True
 
 class LearningPreferences(Contract):
-    autonomy: Literal['suggestions', 'bounded'] = 'bounded'
+    automaticEnabled: bool = False
+    maxShiftMinutes: int = Field(default=30, ge=5, le=60)
+    autonomy: Literal['suggestions', 'bounded'] = 'suggestions'
     preferredSessionMinutes: int = Field(default=45, ge=5, le=180)
     breakMinutes: int = Field(default=10, ge=0, le=60)
     dailyStudyLimitMinutes: int = Field(default=180, ge=15, le=720)

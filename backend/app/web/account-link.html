@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vincular CalenFleX</title>
+<link rel="stylesheet" href="/account-link.css"><script src="/account-link.js" defer></script>
+<main><h1>Vincular CalenFleX</h1><p>Conectá tu identidad OAuth con el espacio de tu teléfono. Ambos accesos deben ser tuyos. No se reemplazan espacios que ya tengan datos.</p>
+<button id="login">Ingresar con el proveedor configurado</button><p id="status" role="status">Preparando conexión…</p>
+<form id="claim" hidden><label>Código de cinco minutos generado en el teléfono<input id="code" autocomplete="off" required minlength="32" maxlength="200"></label>
+<label><input id="confirmed" type="checkbox" required>Confirmo que ambas conexiones son mías y autorizo que compartan el mismo espacio.</label><button>Vincular conexiones</button></form>
+<p>El token OAuth se mantiene en memoria durante esta página. Nunca pegues credenciales ni códigos en conversaciones.</p></main></html>
