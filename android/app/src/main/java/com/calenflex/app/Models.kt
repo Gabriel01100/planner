@@ -12,7 +12,7 @@ fun clock(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
 
 @Serializable data class Window(val days: List<Int> = (0..6).toList(), val start: Int = 480, val end: Int = 1320)
 @Serializable data class Activity(
-    val id: String = UUID.randomUUID().toString(), val title: String = "", val description: String = "",
+    val goalId: String? = null, val id: String = UUID.randomUUID().toString(), val title: String = "", val description: String = "",
     val category: String = "Personal", val startDate: String = today().toString(), val deadline: String? = null,
     val duration: Int = 60, val priority: Int = 2, val status: String = "Pendiente", val frequency: String = "Única",
     val interval: Int = 1, val days: List<Int> = (0..6).toList(), val until: String? = null,
@@ -51,6 +51,7 @@ fun validateState(state: State) {
     windows.forEach { require(it.start in 0..1439 && it.end in 1..1440 && it.start < it.end && it.days.all { d -> d in 0..6 }) { "Horario inválido" } }
     state.activities.forEach {
         UUID.fromString(it.id)
+        it.goalId?.let { goalId -> UUID.fromString(goalId) }
         require(it.title.isNotBlank() && it.title.length <= 200 && it.description.length <= 4000 && it.category.length <= 80)
         require(it.duration in 5..1440 && it.priority in 1..4 && it.interval in 1..365 && it.leadMinutes in 0..525600)
         require(it.status in listOf("Pendiente", "Programada", "En curso", "Completada", "Cancelada", "Vencida"))

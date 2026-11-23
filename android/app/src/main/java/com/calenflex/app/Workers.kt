@@ -20,8 +20,9 @@ import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 class CalenflexApplication : Application() {
-    val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "calenflex.db").build() }
+    val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "calenflex.db").addMigrations(MIGRATION_1_2).build() }
     val repository by lazy { Repository(database.stateDao(), ConnectionStore(this)) }
+    val learningRepository by lazy { LearningRepository(database.learningDao()) { repository.api() } }
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("activities", "Actividades", NotificationManager.IMPORTANCE_DEFAULT))
@@ -32,7 +33,7 @@ class CalenflexApplication : Application() {
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         val repo = (applicationContext as CalenflexApplication).repository
-        if (repo.connection.get().url.isBlank()) Result.success() else { repo.sync(); scheduleReminders(applicationContext, repo.state.first()); Result.success() }
+        if (repo.connection.get().url.isBlank()) Result.success() else { repo.sync(); (applicationContext as CalenflexApplication).learningRepository.sync(); scheduleReminders(applicationContext, repo.state.first()); Result.success() }
     } catch (e: retrofit2.HttpException) { if (e.code() == 409 || e.code() == 401) Result.failure() else Result.retry() }
       catch (e: Exception) { Result.retry() }
 }

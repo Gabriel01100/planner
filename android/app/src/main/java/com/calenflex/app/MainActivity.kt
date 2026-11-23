@@ -1,6 +1,10 @@
 package com.calenflex.app
 
 import android.Manifest
+import android.content.Intent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.*
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,6 +22,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -37,52 +43,126 @@ import java.util.Locale
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
+    private val incoming = MutableStateFlow<SharedContent?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { Calenflex() }
+        receive(intent)
+        setContent {
+            val shared by incoming.collectAsStateWithLifecycle()
+            Calenflex(incoming = shared, clearIncoming = { incoming.value?.files?.forEach { it.file.delete() }; incoming.value = null })
+        }
+    }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receive(intent) }
+    private fun receive(intent: Intent) {
+        lifecycleScope.launch {
+            try { withContext(Dispatchers.IO) { readSharedIntent(this@MainActivity, intent) }?.let { incoming.value = it } }
+            catch(e: Exception) { android.widget.Toast.makeText(this@MainActivity, e.message ?: "No se pudo abrir el contenido compartido", android.widget.Toast.LENGTH_LONG).show() }
+        }
     }
 }
 private val teal = Color(0xFF006C63)
-@Composable fun Calenflex(vm: AppViewModel = viewModel()) {
+@Composable fun Calenflex(vm: AppViewModel = viewModel(), incoming: SharedContent? = null, clearIncoming: () -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val learning by vm.learning.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val dark = state.preferences.theme == "Oscuro" || state.preferences.theme == "Sistema" && isSystemInDarkTheme()
+    val view = LocalView.current
+    SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !dark
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !dark
+        }
+    }
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xFF79D6C5)) else lightColorScheme(primary = teal, secondaryContainer = Color(0xFFDDEFEA), background = Color(0xFFF6F8F6))) {
         val nav = rememberNavController()
         val entry by nav.currentBackStackEntryAsState()
         var editing by remember { mutableStateOf<Activity?>(null) }
+        var editingProposal by remember { mutableStateOf(false) }
         var occurrence by remember { mutableStateOf<Pair<String, String>?>(null) }
         var showAI by remember { mutableStateOf(false) }
+        var goalEditor by remember { mutableStateOf(false) }
+        var editedGoal by remember { mutableStateOf<LearningGoalDto?>(null) }
+        var deletingGoal by remember { mutableStateOf<LearningGoalDto?>(null) }
+        var finishingActive by remember { mutableStateOf(false) }
+        var progressEditor by remember { mutableStateOf(false) }
+        var selectedGoal by remember { mutableStateOf<String?>(null) }
+        var proposalDraft by remember { mutableStateOf<JsonObject?>(null) }
+        var resourceDraft by remember { mutableStateOf<JsonObject?>(null) }
+        var proposalChoice by remember { mutableStateOf<JsonObject?>(null) }
+        var pasteImport by remember { mutableStateOf(false) }
         var delete by remember { mutableStateOf<Activity?>(null) }
         var detail by remember { mutableStateOf<Activity?>(null) }
         val snackbar = remember { SnackbarHostState() }
-        val tabs = listOf("Inicio", "Calendario", "Actividades", "Estadísticas", "Perfil")
-        val icons = listOf(Icons.Outlined.Home, Icons.Outlined.CalendarMonth, Icons.Outlined.Checklist, Icons.Outlined.Insights, Icons.Outlined.Person)
+        val tabs = listOf("Hoy", "Agenda", "Objetivos", "Asistente")
+        val icons = listOf(Icons.Outlined.Home, Icons.Outlined.CalendarMonth, Icons.Outlined.Flag, Icons.Outlined.Forum)
         LaunchedEffect(message) { if (message.isNotBlank()) { snackbar.showSnackbar(message); vm.message.value = "" } }
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = { Column(Modifier.statusBarsPadding().padding(horizontal = 22.dp, vertical = 14.dp)) {
-                Text("CalenFleX", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("CalenFleX", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    IconButton(onClick = { nav.navigate("Estadísticas") }) { Icon(Icons.Outlined.Insights, "Ver estadísticas") }
+                    IconButton(onClick = { nav.navigate("Configuración") }) { Icon(Icons.Outlined.Settings, "Configuración") }
+                }
                 Text("Tu tiempo, con espacio para vos", style = MaterialTheme.typography.labelMedium)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             } },
             bottomBar = { NavigationBar { tabs.forEachIndexed { i, label -> NavigationBarItem(
                 selected = entry?.destination?.route == label, onClick = { nav.navigate(label) { popUpTo(nav.graph.startDestinationId) { saveState = true }; launchSingleTop = true; restoreState = true } },
                 icon = { Icon(icons[i], contentDescription = label) }, label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }) } } },
-            floatingActionButton = { if (entry?.destination?.route in listOf("Inicio", "Calendario", "Actividades")) FloatingActionButton(onClick = { editing = Activity(startDate = today(state.preferences.timezone).toString()) }) { Icon(Icons.Outlined.Add, "Crear actividad") } }
+            floatingActionButton = { if (entry?.destination?.route in listOf("Hoy", "Agenda", "Actividades")) FloatingActionButton(onClick = { editing = Activity(startDate = today(state.preferences.timezone).toString()) }) { Icon(Icons.Outlined.Add, "Crear actividad") } }
         ) { padding ->
-            NavHost(navController = nav, startDestination = "Inicio", modifier = Modifier.padding(padding)) {
-                composable("Inicio") { Dashboard(state, { vm.generate() }, { showAI = true }, { nav.navigate("Actividades") }, { detail = it }, { a, d -> vm.complete(a, d) }) }
+            NavHost(navController = nav, startDestination = "Hoy", modifier = Modifier.padding(padding)) {
+                composable("Hoy") { TodayScreen(state, learning, { a -> vm.task { vm.learningRepository.begin(a.id) } }, { finishingActive = true; progressEditor = true; selectedGoal = state.activities.find { it.id == learning.active?.activityId }?.goalId?.takeIf { id -> learning.goals().any { it.id == id } }; proposalDraft = null }, { vm.generate() }, { detail = it }, { vm.task { vm.learningRepository.clearActive() } }) }
+                composable("Agenda") { Column {
+                    Row { TextButton(onClick = { nav.navigate("Actividades") }) { Text("Actividades") }; TextButton(onClick = { nav.navigate("Calendario") }) { Text("Calendario") } }
+                    CalendarScreen(state, { detail = it }, { a, d -> vm.complete(a, d) })
+                } }
+                composable("Objetivos") { GoalsScreen(learning, { editedGoal = null; goalEditor = true }, { editedGoal = it; goalEditor = true }, { deletingGoal = it }, { finishingActive = false; selectedGoal = it.id; proposalDraft = null; progressEditor = true }, { vm.task { vm.learningRepository.sync(); vm.message.value = "Objetivos actualizados" } }) }
+                composable("Asistente") { AssistantScreen(vm, { pasteImport = true }, { proposalChoice = it }) }
                 composable("Calendario") { CalendarScreen(state, { detail = it }, { a, d -> vm.complete(a, d) }) }
                 composable("Actividades") { ActivitiesScreen(state, { editing = it }, { delete = it }, { vm.complete(it) }, { a -> vm.save(a.copy(id = UUID.randomUUID().toString(), status = "Pendiente", createdAt = "")) }) }
                 composable("Estadísticas") { StatsScreen(state) }
-                composable("Perfil") { ProfileScreen(state, vm) }
+                composable("Configuración") { ProfileScreen(state, vm) }
             }
         }
-        editing?.let { a -> ActivityEditor(a, { editing = null; occurrence = null }) { next -> val source = occurrence; if(source == null) vm.save(next) else vm.exception(source.first, source.second, next); editing = null; occurrence = null } }
+        if(goalEditor) GoalEditor(editedGoal, { goalEditor = false }) { goal ->
+            val correcting = learning.goals().any { it.id == goal.id }
+            vm.task { if(correcting) vm.learningRepository.correctGoal(goal) else vm.learningRepository.createGoal(goal); vm.message.value = "Objetivo guardado" }
+            goalEditor = false
+        }
+        deletingGoal?.let { goal -> Confirm("Eliminar objetivo", "Se eliminarán este objetivo y sus registros educativos del servidor. La agenda histórica se conserva.", { deletingGoal = null }) { vm.task { vm.learningRepository.deleteGoal(goal.id) }; deletingGoal = null } }
+        if(progressEditor) {
+            val active = if(finishingActive) learning.active else null
+            val activity = active?.let { a -> state.activities.find { it.id == a.activityId } }
+            val elapsed = active?.let { runCatching { java.time.Duration.between(java.time.Instant.parse(it.startedAt), java.time.Instant.now()).toMinutes().coerceIn(1, 1440).toInt() }.getOrNull() }
+            ProgressEditor(learning, selectedGoal, activity?.title.orEmpty(), elapsed, activity?.id, proposalDraft, startedAt = active?.startedAt, plannedMinutes = activity?.duration, completeWithoutStudy = if(activity == null) null else ({ vm.task { vm.learningRepository.clearActive() }; vm.complete(activity, today(state.preferences.timezone).toString()); progressEditor = false }), dismiss = { progressEditor = false }) { body ->
+                vm.task {
+                    vm.learningRepository.registerProgress(body)
+                    if(activity != null) {
+                        vm.repository.edit("Sesión finalizada") { snapshot -> snapshot.copy(activities = snapshot.activities.map { if(it.id == activity.id && it.frequency == "Única") it.copy(status = "Completada") else it }, schedule = snapshot.schedule.map { if(it.activityId == activity.id && it.date == today(snapshot.preferences.timezone).toString()) it.copy(completed = true) else it }) }
+                    }
+                    vm.message.value = "Sesión guardada; podés sincronizarla cuando tengas conexión"
+                }
+                progressEditor = false
+            }
+        }
+        if(incoming != null || pasteImport) ImportReview(incoming, vm, { clearIncoming(); pasteImport = false }, { proposalChoice = it; clearIncoming(); pasteImport = false })
+        resourceDraft?.let { draft -> ResourceEditor(learning, draft, { resourceDraft = null }) { body -> vm.task { vm.learningRepository.registerResource(body); vm.message.value = "Recurso guardado, pendiente de sincronización" }; resourceDraft = null } }
+        proposalChoice?.let { proposed -> FullDialog("Elegí cómo registrar la propuesta", { proposalChoice = null }) {
+            Text(proposed.text("summary"))
+            Text("Revisá y corregí los datos. No se guardarán por analizar el contenido.")
+            OutlinedButton(onClick = { resourceDraft = proposed; proposalChoice = null }) { Text("Guardar como recurso") }
+            Button(onClick = { editedGoal = LearningGoalDto(title = proposed.text("proposedGoalTitle").ifBlank { proposed.text("topic").ifBlank { "Nuevo objetivo" } }); goalEditor = true; proposalChoice = null }) { Text("Crear objetivo con esta propuesta") }
+            Button(onClick = { finishingActive = false; proposalDraft = proposed; selectedGoal = null; progressEditor = true; proposalChoice = null }) { Text("Registrar sesión revisada") }
+            (proposed["tasks"] as? JsonArray)?.forEach { task -> val draft = task.jsonObject
+                OutlinedButton(onClick = { editingProposal = true; editing = Activity(title = draft.text("title"), description = draft.text("description"), duration = draft.number("estimatedMinutes") ?: 45, priority = draft.number("priority") ?: 2, startDate = draft.text("startDate"), deadline = draft.text("deadline").takeIf { it.isNotBlank() }); proposalChoice = null }) { Text("Revisar actividad: ${draft.text("title")}") }
+            }
+        } }
+        editing?.let { a -> ActivityEditor(a, { editing = null; occurrence = null; editingProposal = false }, advancedInitially = editingProposal) { next -> val source = occurrence; if(source == null) vm.save(next) else vm.exception(source.first, source.second, next); editing = null; occurrence = null; editingProposal = false } }
         delete?.let { a -> Confirm("Eliminar actividad", "Se eliminarán ${a.title} y sus horarios. Esta acción se sincronizará con el servidor.", { delete = null }) { vm.delete(a); delete = null } }
         detail?.let { a -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(a.title) }, text = { Column {
             Text(a.description.ifBlank { "Sin descripción" }); Text("${a.category} · ${a.duration} min · ${a.status}")
@@ -113,7 +193,7 @@ private val teal = Color(0xFF006C63)
         } }
         if (showAI) FullDialog("Asistente de CalenFleX", { showAI = false }) {
             var prompt by remember { mutableStateOf("") }
-            Text("Se enviarán tus actividades y disponibilidad al proveedor configurado en tu servidor. La IA propone; vos revisás y el motor planifica.")
+            Text("Se enviarán títulos, fechas y duraciones de hasta cincuenta actividades, junto con tu disponibilidad, al proveedor configurado en tu servidor. La IA propone; vos revisás y el motor planifica.")
             Field("¿En qué te ayudo?", prompt) { prompt = it }
             Button(onClick = { vm.ask(prompt) }, enabled = prompt.isNotBlank() && !busy) { Text("Consultar") }
             assistant?.let { answer -> Text(answer.answer); answer.proposedActivity?.let { proposed -> OutlinedButton(onClick = { editing = proposed; showAI = false }) { Text("Revisar actividad propuesta") } } }

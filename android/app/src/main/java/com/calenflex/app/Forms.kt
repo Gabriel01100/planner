@@ -21,7 +21,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 
-@Composable fun ActivityEditor(original: Activity, dismiss: () -> Unit, save: (Activity) -> Unit) {
+@Composable fun ActivityEditor(original: Activity, dismiss: () -> Unit, advancedInitially: Boolean = false, save: (Activity) -> Unit) {
     var a by remember(original) { mutableStateOf(original) }
     var duration by remember { mutableStateOf(a.duration.toString()) }
     var interval by remember { mutableStateOf(a.interval.toString()) }
@@ -33,16 +33,19 @@ import java.util.UUID
     var skipped by remember { mutableStateOf(a.skippedDates.joinToString(",")) }
     var excluded by remember { mutableStateOf(a.excluded.firstOrNull()?.let { "${clock(it.start)}-${clock(it.end)}" }.orEmpty()) }
     var error by remember { mutableStateOf("") }
+    var advanced by remember { mutableStateOf(advancedInitially) }
     var suspendFrom by remember { mutableStateOf("") }
     var suspendUntil by remember { mutableStateOf("") }
     FullDialog(if(a.createdAt.isBlank()) "Nueva actividad" else "Editar actividad", dismiss) {
         Field("Título", a.title) { a = a.copy(title = it) }
         Field("Descripción", a.description) { a = a.copy(description = it) }
+        Field("Duración en minutos", duration) { duration = it }
+        Choice("Prioridad", listOf("Muy alta", "Alta", "Media", "Baja")[a.priority - 1], listOf("Muy alta", "Alta", "Media", "Baja")) { a = a.copy(priority = listOf("Muy alta", "Alta", "Media", "Baja").indexOf(it) + 1) }
+        TextButton(onClick = { advanced = !advanced }) { Text(if(advanced) "Ocultar opciones avanzadas" else "Opciones avanzadas") }
+        if(advanced) {
         Field("Categoría", a.category) { a = a.copy(category = it) }
         Field("Inicio (AAAA-MM-DD)", a.startDate) { a = a.copy(startDate = it) }
         Field("Fecha límite (opcional)", a.deadline.orEmpty()) { a = a.copy(deadline = it.ifBlank { null }) }
-        Field("Duración en minutos", duration) { duration = it }
-        Choice("Prioridad", listOf("Muy alta", "Alta", "Media", "Baja")[a.priority - 1], listOf("Muy alta", "Alta", "Media", "Baja")) { a = a.copy(priority = listOf("Muy alta", "Alta", "Media", "Baja").indexOf(it) + 1) }
         Choice("Estado", a.status, listOf("Pendiente", "Programada", "En curso", "Completada", "Cancelada", "Vencida")) { a = a.copy(status = it) }
         Choice("Frecuencia", a.frequency, listOf("Única", "Diaria", "Semanal", "Mensual", "Personalizada")) { a = a.copy(frequency = it) }
         if(a.frequency != "Única") {
@@ -61,6 +64,7 @@ import java.util.UUID
         Field("Anticipación mínima en minutos", lead) { lead = it }
         Field("Omitir fechas (AAAA-MM-DD, separadas por coma)", skipped) { skipped = it }
         Text("Para posponer una actividad única, cambiá su fecha de inicio y fecha límite. Para una excepción, omití la fecha y creá una actividad única.", style = MaterialTheme.typography.bodySmall)
+        }
         if(error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
         Button(onClick = {
             try {
@@ -99,6 +103,7 @@ fun parseTime(text: String, allowMidnight: Boolean = false): Int {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dirty by vm.dirty.collectAsStateWithLifecycle()
+    val learning by vm.learning.collectAsStateWithLifecycle()
     var name by remember(state.preferences.name) { mutableStateOf(state.preferences.name) }
     var zone by remember(state.preferences.timezone) { mutableStateOf(state.preferences.timezone) }
     var theme by remember(state.preferences.theme) { mutableStateOf(state.preferences.theme) }
@@ -194,11 +199,13 @@ fun parseTime(text: String, allowMidnight: Boolean = false): Int {
         TextButton(onClick = { confirm = "local" }) { Text("Conservar esta versión local") }
         Text("La IA se configura en el servidor con AI_API_KEY; ninguna clave del proveedor se guarda en el APK.", style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        Text("Copias e historial", style = MaterialTheme.typography.titleLarge)
+        LearningBackup(vm, learning)
+        HorizontalDivider()
+        Text("Copias e historial de agenda", style = MaterialTheme.typography.titleLarge)
         OutlinedButton(onClick = { export.launch("calenflex-${today()}.json") }) { Text("Exportar copia JSON") }
         OutlinedButton(onClick = { import.launch(arrayOf("application/json", "text/plain")) }) { Text("Importar copia JSON") }
         state.history.takeLast(30).reversed().forEach { Text("${it.at.take(19)} · ${it.text}", style = MaterialTheme.typography.bodySmall) }
-        Text("CalenFleX 1.0 · Español (Argentina)")
+        Text("CalenFleX 1.1 · Español (Argentina)")
     }
     if(confirm.isNotBlank()) Confirm("Resolver sincronización", if(confirm == "remote") "Se reemplazarán los datos de este teléfono por los del servidor. Exportá una copia antes de continuar." else "Se reemplazará la versión del servidor por la de este teléfono. Exportá una copia antes de continuar.", { confirm = "" }) {
         val action = confirm; confirm = ""

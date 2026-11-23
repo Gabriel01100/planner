@@ -1,34 +1,27 @@
-# CalenFleX
+# CalenFleX 1.1
 
-Planificador personal nativo para Android, en español argentino. Kotlin, Jetpack Compose y Material 3; backend Python/FastAPI con un motor determinista nuevo, persistencia SQLAlchemy e integración opcional de IA.
+Planificación personal y memoria de aprendizaje, con Android nativo y backend propio. Esta evolución conserva la agenda anterior y agrega objetivos, sesiones confirmadas, recursos, próximos pasos e integración MCP compatible con herramientas de ChatGPT.
 
-## Uso
+**[Descargar APK desde Releases](https://github.com/Gabriel01100/planner/releases)** · [Hoja de ruta y evidencia por etapa](docs/EVOLUTION_ROADMAP.md)
 
-1. Instalar el APK de depuración descargado desde **Actions → CalenFleX checks and APK → CalenFleX-debug** cuando la ejecución termine correctamente. Descomprimir el artefacto y abrir `app-debug.apk` en Android 8 o posterior. Permitir la instalación desde esa fuente si Android lo solicita.
-2. Abrir la app, crear una actividad con `+` y configurar la disponibilidad en Perfil. Las actividades se guardan en Room, incluso sin Internet.
-3. Para generar horarios, sincronizar y consultar IA, desplegar el backend en un servidor HTTPS según [DEPLOYMENT](docs/DEPLOYMENT.md) y guardar su URL y token en Perfil.
-4. En Inicio, elegir **Organizar mi semana**. Revisar horarios, pendientes y cambios antes de aceptar. Los datos completados conservan su horario histórico.
-5. Habilitar notificaciones de Android y elegir sus categorías en Perfil. WorkManager puede demorar los recordatorios por restricciones de batería.
+## Uso en Android
 
-La app no requiere una computadora para su uso cotidiano una vez instalado el APK y configurado un backend accesible. El repositorio no incluye un hosting ya desplegado. Sin backend se pueden administrar actividades, consultar horarios guardados, ver estadísticas y gestionar copias; la generación de planes y la IA requieren servidor.
+Requiere Android 8 o posterior. Descargar CalenFleX-debug.apk desde una prerelease cuya ejecución de Actions haya aprobado backend, compilación y dispositivo. Es una compilación de depuración, no una publicación en Play Store.
 
-## Funcionalidades
+- **Hoy:** próxima actividad, comenzar y finalizar sesión. El tiempo medido se puede corregir; una actividad general se puede completar sin inventar un objetivo educativo.
+- **Agenda:** calendario y CRUD de actividades, con opciones avanzadas desplegables. La reorganización se previsualiza y requiere aceptación.
+- **Objetivos:** crear, registrar progreso y recursos, consultar tiempos reales y próximos pasos, corregir y eliminar con confirmación.
+- **Asistente:** conversación breve y propuestas editables. El progreso del objetivo se comparte solo si se habilita expresamente.
 
-- Navegación Inicio, Calendario, Actividades, Estadísticas y Perfil.
-- Crear, editar, buscar, filtrar, ordenar, duplicar, cancelar, completar y eliminar actividades.
-- Fechas límite, duración, prioridades, días permitidos, franjas, exclusiones, preferencia horaria y horario fijo.
-- Recurrencias diarias, semanales, mensuales y por intervalos; fechas omitidas y fin de serie.
-- Calendario por día, semana, mes y agenda, presentado como listas de días cómodas para móvil.
-- Planificación y reorganización con confirmación, restricciones, pendientes y conservación de ocurrencias completadas.
-- Persistencia local, sincronización manual/automática con detección de conflictos, exportación/importación JSON y registro de cambios.
-- Recordatorios previos, inicio y atraso; resúmenes periódicos y recordatorios de pendientes configurables.
-- Estadísticas calculadas a partir de horarios reales y ocurrencias completadas.
-- Temas claro, oscuro y sistema; zona horaria configurable, inicial Buenos Aires.
-- Asistente real conectado a un proveedor OpenAI-compatible en el backend. Propuestas revisables y validación de respuestas; no hay respuestas simuladas en producción.
+Configuración y estadísticas están en la cabecera. Sin conexión, agenda, objetivos y registros locales siguen disponibles. Los comandos educativos quedan en Room y se sincronizan con IDs estables. El asistente, análisis de documentos, generación de planes y sincronización necesitan un backend HTTPS configurado.
 
-## Ejecutar backend
+Compartir desde ChatGPT, NotebookLM, un navegador o un lector compatible abre una revisión de texto, enlaces o documentos. No se leen conversaciones privadas ni se descargan enlaces automáticamente. Analizar no equivale a guardar. [Guía de Android e importación](docs/ANDROID_IMPORT.md).
 
-Requisitos: Python 3.12, conexión para instalar dependencias.
+Antes de desinstalar o cambiar entre APK de depuración con firmas diferentes, exportar **agenda y aprendizaje** desde Configuración. Android puede exigir desinstalar si la firma cambió. Las actualizaciones de distribución necesitan una clave privada estable, que no se incluye en Git.
+
+## Backend local y pruebas
+
+Python 3.12. Para desarrollo:
 
 ```sh
 python -m venv .venv
@@ -36,51 +29,43 @@ python -m venv .venv
 pip install -r backend/requirements.txt
 export CALENFLEX_TOKEN="tu-token-privado-largo"
 cd backend
+python -m app.manage migrate
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Consultar `/docs`. El backend rechaza las rutas protegidas si CALENFLEX_TOKEN está vacío. Para persistencia local se usa `calenflex.db`; `DATABASE_URL` permite elegir otra ubicación. Para Docker, copiar `.env.example` a `.env`, configurar el token y seguir [despliegue](docs/DEPLOYMENT.md).
-
-## Compilar Android
-
-Requisitos: JDK 17, Android SDK con plataforma 35 y Build Tools 35.0.0, Android Studio opcional. El wrapper descarga Gradle 8.13. Definir ANDROID_HOME o `android/local.properties` con `sdk.dir`.
-
-```sh
-cd android
-./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
-```
-
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Es un APK de depuración, no una versión firmada para Play Store. Para distribución definitiva hay que configurar firma privada y aumentar versionCode. No guardar el keystore ni contraseñas en Git.
-
-## Pruebas
+Consultar `/docs` para contratos y autorización. CALENFLEX_TOKEN conserva el espacio histórico personal. Los tokens nuevos son revocables, tienen scopes y se almacenan por hash. El servidor selecciona el usuario autenticado; ningún JSON puede elegir owner. Las versiones antiguas de Android conservan la API de agenda y no pueden borrar la memoria educativa nueva.
 
 ```sh
 PYTHONPATH=backend pytest -q backend/tests
 cd android
-./gradlew testDebugUnitTest lintDebug
-./gradlew connectedDebugAndroidTest  # requiere emulador o teléfono conectado
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew connectedDebugAndroidTest  # emulador o dispositivo conectado
 ```
 
-GitHub Actions ejecuta backend, compilación, lint, tests JVM, tests instrumentados en emulador y conserva el APK como artefacto. Consultar [VALIDATION](docs/VALIDATION.md) para los resultados realmente ejecutados durante el desarrollo.
+Android usa JDK 17, SDK 35, Kotlin 2.1.20, Compose/Material 3, MVVM, Room, DataStore, Retrofit y WorkManager. El wrapper descarga Gradle 8.13 y verifica su checksum. APK local: android/app/build/outputs/apk/debug/app-debug.apk.
+
+## Servidor, cifrado e integración con ChatGPT
+
+Para usar el teléfono sin una computadora encendida, desplegar el backend en un servidor HTTPS permanente. No se ha contratado ni desplegado ese hosting. Configurar la URL y el token de su espacio en Android.
+
+En producción, definir CALENFLEX_ENV=production y una CALENFLEX_DATA_KEY Fernet válida, guardada en un gestor de secretos y respaldada por separado. Las migraciones cifran agenda, memoria y propuestas sin reemplazar sus registros ni revisiones. Una clave incorrecta detiene la apertura; no produce una base vacía. En desarrollo, sin clave, los datos son texto claro. [Despliegue y recuperación](docs/DEPLOYMENT.md).
+
+MCP Streamable HTTP se habilita en `/mcp` al configurar OAUTH_ISSUER, OAUTH_JWKS_URL y OAUTH_RESOURCE_URL HTTPS de un proveedor OAuth/OIDC real. Verifica firma RS256, emisor, audiencia, expiración y permisos. Hay 19 herramientas, incluidas las 17 solicitadas, para registrar sesiones y consultar progreso/agenda. [Guía de conexión con ChatGPT](docs/MCP.md).
+
+Las pruebas usan credenciales y proveedores simulados. No se declara conectado a una cuenta real de ChatGPT ni publicado en el directorio de apps. La disponibilidad de conectores de desarrollo depende de la cuenta. La suscripción de ChatGPT no proporciona una clave de API ni acceso a conversaciones privadas.
+
+## IA y planificación
+
+Configurar AI_API_KEY, AI_BASE_URL, AI_MODEL y AI_REQUESTS_PER_HOUR en el servidor para propuestas reales con Responses API y Structured Outputs. Sin clave, el trabajo local y el registro manual continúan. El backend no guarda por analizar; las propuestas se validan y revisan antes de pasar a servicios de dominio. No se ejecuta SQL ni instrucciones de documentos.
+
+El motor original sigue en producción. Un envoltorio conserva sesiones válidas durante la reorganización. CP-SAT se evaluó en veinte escenarios simplificados: 83 tareas programadas frente a 71 del motor actual. No es una prueba de superioridad general y no se activó. [Evaluación y límites de autonomía](docs/OPTIMIZATION.md).
+
+Las sugerencias de comportamiento se basan en registros suficientes y muestran evidencia; no castigan omisiones ni alteran prioridades por su cuenta. El modo totalmente autónomo no está disponible. La adaptación automática, dependencias del optimizador completo y reparto multiobjetivo continúan en la hoja de ruta.
 
 ## Documentación
 
-- [Arquitectura y política de sincronización](docs/ARCHITECTURE.md)
-- [API y contratos](docs/API.md)
-- [Android y persistencia](docs/ANDROID.md)
-- [IA y configuración](docs/AI_INTEGRATION.md)
-- [Despliegue y privacidad](docs/DEPLOYMENT.md)
-- [Validación y limitaciones](docs/VALIDATION.md)
-
-## Límites de esta entrega
-
-El algoritmo es voraz, no un optimizador global. Las excepciones se convierten atómicamente en una actividad única y una fecha omitida en la serie desde el detalle de una ocurrencia. La suspensión temporal agrega fechas omitidas al intervalo elegido. Las franjas de disponibilidad delimitan descanso/sueño; no hay formularios separados para cada tipo. Los resúmenes se ejecutan periódicamente sin una hora exacta garantizada. No hay autenticación multiusuario, cuenta comercial de IA, hosting contratado, publicación en Play Store ni garantía de notificaciones en cada fabricante sin pruebas en un teléfono real. El código original no tenía backend ni pruebas; no existían las 54 pruebas mencionadas en el pedido inicial.
-
-## Problemas frecuentes
-
-- **Sin servidor configurado:** Perfil → URL HTTPS y token; el CRUD local sigue disponible.
-- **401:** revisar token de la app y CALENFLEX_TOKEN del servidor.
-- **409:** exportar copia y elegir versión local o remota en Perfil; no se descartan cambios automáticamente.
-- **IA no disponible:** configurar AI_API_KEY y proveedor en el servidor; reiniciarlo.
-- **Actividad sin horario:** revisar duración, anticipación, días y fechas límite; ampliar disponibilidad y generar otro plan.
-- **No llegan notificaciones:** revisar permiso de Android, configuración de CalenFleX y restricciones de batería; WorkManager no proporciona alarmas exactas.
+- [Arquitectura y ADR](docs/ARCHITECTURE.md) · [Decisión de compatibilidad y cifrado](docs/adr/0001-learning-and-compatibility.md).
+- [API de agenda](docs/API.md) · [API educativa y propuestas](docs/LEARNING_API.md) · [MCP](docs/MCP.md).
+- [Android](docs/ANDROID.md) · [Nuevo flujo e importación](docs/ANDROID_IMPORT.md) · [Revisión UX](docs/UX_EVOLUTION.md).
+- [IA](docs/AI_INTEGRATION.md) · [Base de datos](docs/DATABASE.md) · [Despliegue](docs/DEPLOYMENT.md).
+- [Resultados realmente ejecutados y limitaciones](docs/VALIDATION.md) · [Roadmap](docs/EVOLUTION_ROADMAP.md).

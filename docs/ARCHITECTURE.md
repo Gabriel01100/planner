@@ -25,3 +25,24 @@ Cada documento tiene revisión remota y un indicador local de cambios. Sin cambi
 ## IA
 
 Adaptador HTTP OpenAI-compatible, configurado por entorno. No puede guardar ni aplicar planes. Respuestas estructuradas se validan con Pydantic y las propuestas se revisan en el formulario. Timeout de 30 segundos, límite de respuestas y máximo horario por proceso. Para varios procesos, el límite de costo debe imponerse también en el proveedor o gateway.
+
+# Evolución 1.1
+
+Las secciones anteriores documentan la versión inicial. Ahora existe aislamiento por principal y permisos, memoria educativa versionada en learning_documents, propuestas de agenda con revisión/vencimiento/reversión y auditoría sin contenido privado. Las migraciones SQL 1–4 son aditivas y el documento de agenda anterior permanece intacto. Los payloads pueden cifrarse con un sobre autenticado y clave de despliegue; producción exige configurarla.
+
+Android migra Room 1→2 agregando learning_cache para memoria, sesión en curso y cola persistente. La agenda y la memoria usan revisiones independientes. Los clientes antiguos no escriben learning_documents. La navegación actual es Hoy/Agenda/Objetivos/Asistente, con configuración y estadísticas secundarias.
+
+```mermaid
+flowchart LR
+    Android[Android: Compose y Room] --> API[FastAPI: agenda y aprendizaje v1]
+    ChatGPT[ChatGPT: acciones explícitas] --> MCP[MCP: OAuth y scopes]
+    MCP --> Domain[Servicios de dominio]
+    API --> Domain
+    Domain --> Memory[Memoria y fuentes]
+    Domain --> Planner[Motor determinista conservado]
+    Domain --> DB[SQLAlchemy: documentos versionados y cifrado]
+    API --> Agent[Adaptador Responses: propuestas validadas]
+    Agent --> Provider[Proveedor LLM configurado]
+```
+
+El servidor MCP usa el SDK oficial y servicios compartidos, sin duplicar el planificador ni simular llamadas a ChatGPT. El proveedor OAuth externo y el hosting HTTPS son configuración pendiente del despliegue, no servicios inventados. Ver ADR 0001, MCP.md y OPTIMIZATION.md para decisiones, alcances y pendientes.

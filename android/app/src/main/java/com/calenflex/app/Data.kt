@@ -20,6 +20,11 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Path
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import okhttp3.MultipartBody
+import kotlinx.serialization.json.JsonObject
 import java.security.KeyStore
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -35,8 +40,8 @@ data class StoredState(@PrimaryKey val id: Int = 1, val payload: String, val rev
     @Query("SELECT * FROM workspace WHERE id = 1") suspend fun get(): StoredState?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(value: StoredState)
 }
-@Database(entities = [StoredState::class], version = 1, exportSchema = true)
-abstract class AppDatabase : RoomDatabase() { abstract fun stateDao(): StateDao }
+@Database(entities = [StoredState::class, LearningStored::class], version = 2, exportSchema = true)
+abstract class AppDatabase : RoomDatabase() { abstract fun stateDao(): StateDao; abstract fun learningDao(): LearningDao }
 
 val Context.connectionData by preferencesDataStore("connection")
 data class Connection(val url: String = "", val token: String = "")
@@ -71,9 +76,18 @@ class ConnectionStore(private val context: Context) : ConnectionProvider {
     }
 }
 interface Api {
+    @POST("api/v1/learning/resources") suspend fun registerLearningResource(@Body body: JsonObject): MutationDto
+    @GET("api/v1/learning/insights") suspend fun learningInsights(): JsonObject
+    @GET("api/v1/learning") suspend fun learning(): LearningEnvelope
+    @POST("api/v1/learning/goals") suspend fun createLearningGoal(@Body body: JsonObject): MutationDto
+    @POST("api/v1/learning/progress") suspend fun registerLearningProgress(@Body body: JsonObject): MutationDto
+    @PUT("api/v1/learning") suspend fun correctLearning(@Body body: JsonObject): MutationDto
+    @POST("api/v1/learning/goals/{id}/delete") suspend fun deleteLearningGoal(@Path("id") id: String, @Body body: JsonObject): MutationDto
+    @POST("api/v1/imports/propose") suspend fun analyzeImport(@Body body: JsonObject): JsonObject
+    @Multipart @POST("api/v1/imports/document") suspend fun analyzeDocument(@Part file: MultipartBody.Part): JsonObject
     @GET("api/sync") suspend fun pull(): SyncEnvelope
     @PUT("api/sync") suspend fun push(@Body body: SyncEnvelope): SyncEnvelope
-    @POST("api/plan") suspend fun plan(@Body body: PlanRequest): PlanResult
+    @POST("api/v1/planning/preview") suspend fun plan(@Body body: PlanRequest): PlanResult
     @POST("api/ai") suspend fun ai(@Body body: AIRequest): AIResponse
 }
 class Repository(private val dao: StateDao, val connection: ConnectionProvider, private val apiOverride: Api? = null) {

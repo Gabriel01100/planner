@@ -14,11 +14,15 @@ import java.time.Instant
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as CalenflexApplication).repository
+    val learningRepository = (application as CalenflexApplication).learningRepository
+    val learning = learningRepository.snapshots.stateIn(viewModelScope, SharingStarted.Eagerly, LearningSnapshot())
     val state = repository.state.stateIn(viewModelScope, SharingStarted.Eagerly, State())
     val dirty = repository.stored.map { it?.dirty ?: false }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val busy = MutableStateFlow(false)
     val message = MutableStateFlow("")
     val preview = MutableStateFlow<PlanResult?>(null)
+    val learningConversation = MutableStateFlow<List<kotlinx.serialization.json.JsonObject>>(emptyList())
+    val latestLearningProposal = MutableStateFlow<kotlinx.serialization.json.JsonObject?>(null)
     val assistant = MutableStateFlow<AIResponse?>(null)
     private var planBase = ""
     private val taskMutex = Mutex()
@@ -31,10 +35,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     is retrofit2.HttpException -> when(e.code()) {
                         409 -> "Conflicto de sincronización. Exportá una copia y elegí una versión en Perfil."
                         401 -> "Credencial del servidor inválida"
-                        503 -> "Servicio no configurado; las actividades locales siguen disponibles"
-                        else -> "El servidor respondió con error ${e.code()}"
+                        403 -> "Esta conexión no tiene permiso para la acción. Revisá sus permisos."
+                        413 -> "El contenido es demasiado grande. Compartí un archivo o texto más breve."
+                        422 -> "Revisá los datos, fechas y duración antes de guardar."
+                        429 -> "Alcanzaste el límite de consultas. Probá más tarde."
+                        503 -> "Esta función no está configurada en el servidor. Podés seguir trabajando localmente."
+                        else -> "El servicio no pudo completar la operación. Los datos locales se conservan."
                     }
-                    is java.io.IOException -> "Sin conexión. Tus cambios quedaron guardados en el teléfono."
+                    is java.io.IOException -> "Sin conexión. Los datos y registros ya guardados siguen en el teléfono."
                     else -> e.message ?: "No se pudo completar la operación"
                 }
             } finally { busy.value = false }
@@ -79,7 +87,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
         message.value = "Planificación aplicada"
     }
-    fun sync() = task { repository.sync(); withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }; message.value = "Sincronización completada" }
+    fun sync() = task { repository.sync(); learningRepository.sync(); withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }; message.value = "Sincronización completada" }
     fun ask(text: String) = task { val response = repository.api().ai(AIRequest(text, state.value)); assistant.value = response.copy(proposedActivity = response.proposedActivity?.copy(id = java.util.UUID.randomUUID().toString(), createdAt = "", updatedAt = "")) }
     fun importState(text: String) = task {
         require(text.length <= 5_000_000) { "La copia supera 5 MB" }

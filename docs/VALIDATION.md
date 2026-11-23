@@ -29,3 +29,19 @@ No se realizaron consultas pagas a un proveedor de IA ni se desplegó un backend
 - El APK usa firma de depuración. No hay publicación en Play Store ni firma de distribución administrada.
 
 Esta entrega contiene una implementación funcional desde cero, pero las validaciones pendientes y estos límites impiden afirmar que cumple íntegramente todos los criterios del documento original.
+
+# Evolución 1.1 — resultados de esta entrega
+
+Las cifras y límites anteriores corresponden a la primera versión y se conservan como registro histórico. La evolución agregó:
+
+- Backend: **112 pruebas aprobadas localmente**, incluidas las 71 anteriores. Cobertura nueva de sesiones, recursos, idempotencia, referencias/ciclos, evidencia sin dominio inventado, usuario/scopes/revocación, migración desde la base original, cifrado y clave incorrecta, protocolo MCP HTTP, JWT, propuestas Responses simuladas, material adversarial, PDF aislado, cuota de IA, conservación/reversión de planes y sugerencias sin escritura.
+- Android: **18 pruebas JVM aprobadas localmente**. Se mantienen las 13 anteriores y se agregan cola educativa persistente, reintento tras commit remoto, duración desconocida, sesión activa, copias y protección frente a regresión remota.
+- Compilación local ejecutada: assembleDebug, testDebugUnitTest, lintDebug y assembleDebugAndroidTest. Lint sin errores; continúan advertencias de actualizaciones de dependencias.
+- Se implementaron seis pruebas instrumentadas para navegación/CRUD, aprendizaje offline con recreación de Activity, recepción explícita de texto, persistencia Room, migración real 1→2 y rechazo de entradas compartidas inseguras. Su compilación no equivale a ejecución; el job android-device de Actions determina el resultado real.
+- CP-SAT: veinte escenarios simplificados ejecutados, 71 actividades programadas por la base y 83 por el experimento. No es una comparación completa ni demuestra superioridad general; no se cambia el motor de producción.
+
+No se hizo una conexión real a una cuenta de ChatGPT ni una consulta paga a OpenAI. No se desplegó hosting HTTPS ni PostgreSQL y no se generó una clave privada estable de distribución. La conexión MCP necesita proveedor OAuth real; las pruebas con JWT firmados y clientes HTTP prueban protocolo/aislamiento, no una instalación en el directorio de apps.
+
+## Pendientes explícitos
+
+Optimizador completo con dependencias, carga multiobjetivo y repasos espaciados; aplicación automática de adaptaciones bajo límites; login/vinculación OAuth móvil; validación PostgreSQL; producción HTTPS y firma de distribución. Las sugerencias de comportamiento actuales no modifican datos por su cuenta. Los recursos compartidos se guardan como referencias, no como evidencia automática de dominio. La navegación nueva conserva las funciones anteriores en accesos secundarios.

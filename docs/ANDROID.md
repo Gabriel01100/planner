@@ -15,3 +15,7 @@ Tests JVM de contratos, validaciones e importación. Tests instrumentados de rea
 ## Modelo de base
 
 Tabla `workspace`: `id`, `payload`, `revision`, `dirty`. Una fila por instalación. El payload State v1 contiene actividades con UUID, recurrencias y excepciones, disponibilidad, bloqueos, horarios y ocurrencias completadas, preferencias, pendientes e historial. Room genera el esquema en `app/schemas`. Una versión futura debe agregar migraciones explícitas, nunca migración destructiva.
+
+# Versión 1.1
+
+La descripción de cinco destinos y Room v1 es histórica. Actualmente hay cuatro destinos principales, accesos secundarios para gestión/configuración y Room v2 con MIGRATION_1_2 explícita. Se conservan el CRUD, calendario, estadísticas, agenda offline y copias anteriores. La memoria educativa, comandos pendientes y sesión en curso usan learning_cache, con revisiones independientes de agenda. Ver ANDROID_IMPORT.md para flujos, copias y limitaciones.

@@ -16,7 +16,16 @@ class FakeConnection : ConnectionProvider {
     override suspend fun get() = Connection()
     override suspend fun save(connection: Connection) {}
 }
-class FakeApi : Api {
+open class FakeApi : Api {
+    override suspend fun registerLearningResource(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun learningInsights(): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun learning(): LearningEnvelope = error("unused")
+    override suspend fun createLearningGoal(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun registerLearningProgress(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun correctLearning(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun deleteLearningGoal(id: String, body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun analyzeImport(body: kotlinx.serialization.json.JsonObject): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun analyzeDocument(file: okhttp3.MultipartBody.Part): kotlinx.serialization.json.JsonObject = error("unused")
     var remote = SyncEnvelope(0, State())
     override suspend fun pull() = remote
     override suspend fun push(body: SyncEnvelope): SyncEnvelope {

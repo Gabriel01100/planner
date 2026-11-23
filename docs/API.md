@@ -13,3 +13,7 @@ Consultar `/docs` o `/openapi.json` para el contrato completo generado desde Pyd
 Los nombres JSON usan camelCase y las fechas ISO 8601. Los horarios son minutos desde medianoche local (0..1440); días 0=lunes y 6=domingo. Los horarios no representan instantes UTC. La zona IANA del usuario interpreta cada fecha y hora; WorkManager usa esa zona al programar recordatorios.
 
 State contiene `schemaVersion: 1`, `activities`, `availability`, `blocked`, `schedule`, `preferences`, `history`. UUID identifica cada actividad. Una ocurrencia se identifica por actividad y fecha. Importar reemplaza el documento local después de validar, con confirmación. Exportar no incluye la credencial ni la URL del servidor.
+
+# Rutas nuevas 1.1
+
+Ver LEARNING_API.md para `/api/v1/learning`, sesiones, recursos, correcciones y propuestas de importación. Ver MCP.md para `/mcp` y OAuth. Ver OPTIMIZATION.md para previsualización estable, propuestas versionadas y reversión. La API de agenda anterior sigue disponible. goalId es un campo opcional nuevo de Activity; cuando un cliente anterior lo omite al editar, el servidor conserva la asociación existente.
