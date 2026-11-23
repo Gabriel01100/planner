@@ -45,3 +45,7 @@ No se hizo una conexión real a una cuenta de ChatGPT ni una consulta paga a Ope
 ## Pendientes explícitos
 
 Optimizador completo con dependencias, carga multiobjetivo y repasos espaciados; aplicación automática de adaptaciones bajo límites; login/vinculación OAuth móvil; validación PostgreSQL; producción HTTPS y firma de distribución. Las sugerencias de comportamiento actuales no modifican datos por su cuenta. Los recursos compartidos se guardan como referencias, no como evidencia automática de dominio. La navegación nueva conserva las funciones anteriores en accesos secundarios.
+
+## Primera ejecución de dispositivo de la evolución
+
+Actions 45117113872 aprobó backend y compilación/lint/JVM de Android. Ejecutó las seis pruebas instrumentadas: cuatro aprobadas y dos fallidas. La memoria offline con recreación y la migración Room 1→2 aprobaron. Se corrigió el retorno de la pestaña Agenda para evitar restaurar una pantalla secundaria y se agregó espera de visibilidad. El test Share Intent restaura su Intent de lanzamiento antes del cierre porque ActivityScenario filtra eventos por ese Intent; el receptor real conserva ACTION_SEND. No se eliminaron ni omitieron pruebas. La siguiente ejecución de Actions es la fuente de verdad del resultado tras estas correcciones.

@@ -30,7 +30,7 @@ Ejecutado: línea base **71/71**; después de la etapa 1 **85/85** tests de back
 
 Se implementa un adaptador OpenAI Responses con Structured Outputs para propuestas sin escritura, validación de salida y contexto limitado a contenido explícitamente compartido y títulos/IDs de objetivos. No se transmite el historial privado completo. Textos y PDF se tratan como datos, no instrucciones; enlaces no se descargan. El decodificador PDF se ejecuta sin credenciales y con límites de memoria, CPU, tamaño, páginas y tiempo en un proceso separado.
 
-El MCP oficial implementa las 17 herramientas solicitadas y una herramienta adicional para listar objetivos. Contratos de entrada/salida estrictos, permisos por herramienta, JWT OAuth verificado, anotaciones de cambios importantes, revocación y cuota por usuario/proceso. Los comandos usan los mismos servicios que REST; no ejecutan SQL generado por modelos.
+El MCP oficial implementa las 17 herramientas solicitadas y dos herramientas adicionales para listar objetivos y consultar evidencias de comportamiento. Contratos de entrada/salida estrictos, permisos por herramienta, JWT OAuth verificado, anotaciones de cambios importantes, revocación y cuota por usuario/proceso. Los comandos usan los mismos servicios que REST; no ejecutan SQL generado por modelos.
 
 Se añade un envoltorio del planificador existente que conserva sesiones válidas, sin cambiar el algoritmo original. Las propuestas tienen revisión y vencimiento; aplicar una propuesta usada, obsoleta, ajena o conflictiva se rechaza. Revertir exige que no haya ediciones posteriores. El modo completamente autónomo no se activa.
 
@@ -43,3 +43,19 @@ Se implementó la nueva navegación y el editor progresivo, recepción de texto/
 La evaluación CP-SAT quedó experimental, con resultados reales de veinte casos y objetivo distinto al de producción. Se conserva el motor original. Las sugerencias de duración/repaso se basan en evidencias, se muestran como estimaciones y no se aplican automáticamente. No se activa fully_autonomous.
 
 Ver VALIDATION.md para los resultados finales de esta entrega. Siguen pendientes el optimizador completo con dependencias y cargas multiobjetivo, la aplicación automática de adaptaciones acotadas, vinculación/login OAuth móvil, un despliegue HTTPS real y validación PostgreSQL. No se presenta esta entrega por etapas como toda la visión terminada.
+
+## Archivos y decisiones por etapa
+
+| Etapa | Archivos principales | Decisión y verificación |
+| --- | --- | --- |
+| 0 | ARCHITECTURE.md, EVOLUTION_ROADMAP.md | Auditar 0942752 y ejecutar las 71 pruebas originales antes de editar. |
+| 1 | backend/app/learning_models.py, learning.py, database.py, security.py; tests/test_learning.py | Memoria separada de agenda, migración aditiva y revisiones; ADR 0001. Consultar LEARNING_API.md para reproducir registros y conflictos. |
+| 2 | backend/app/agent.py, pdf_extract.py; tests/test_agent.py | Propuestas tipadas sin escrituras automáticas, contexto mínimo y PDF aislado. Proveedor simulado; configurar Responses para llamadas reales. |
+| 3 | backend/app/mcp_server.py, agenda.py, planning_api.py; tests/test_mcp.py | Servicios compartidos, JWT verificado, scopes y aprobación versionada. MCP.md documenta OAuth, principal común con móvil y pruebas de protocolo. |
+| 4 | Android ShareImport.kt, LearningData.kt, LearningBackup.kt; NavigationTest.kt | Revisar antes de analizar/guardar, cola idempotente y recuperación explícita. ANDROID_IMPORT.md explica el flujo manual. |
+| 5 | backend/experiments/compare_cpsat.py; benchmarks/cpsat-evaluation.json | Experimento reproducible de 20 casos, sin sustituir el motor. OPTIMIZATION.md documenta restricciones pendientes. |
+| 6 | backend/app/behavior.py; tests/test_behavior.py | Evidencias mínimas y sugerencias revisables; sin aplicación automática. Consultar learning/insights o la vista Objetivos. |
+| 7 | Android MainActivity.kt, LearningScreens.kt, Forms.kt | Cuatro destinos principales y formularios progresivos; UX_EVOLUTION.md. Pruebas funcionales de emulador, sin afirmar estudio de usabilidad con personas. |
+| 8 | encryption.py, manage.py, docker-compose.yml, .env.example, DEPLOYMENT.md, VALIDATION.md | Producción exige clave de cifrado; CI publica APK solo tras tres jobs aprobados. Hosting, OAuth externo y firma de distribución siguen pendientes. |
+
+El resultado acumulado local es 112 pruebas backend y 18 JVM. SQLite y migración Room tienen cobertura automatizada; PostgreSQL y proveedores externos no se ejecutaron. Los comandos de README y los ejemplos de API/MCP permiten reproducir la verificación. La fuente del resultado instrumentado es el job android-device de cada ejecución en Actions.

@@ -111,7 +111,7 @@ private val teal = Color(0xFF006C63)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             } },
             bottomBar = { NavigationBar { tabs.forEachIndexed { i, label -> NavigationBarItem(
-                selected = entry?.destination?.route == label, onClick = { nav.navigate(label) { popUpTo(nav.graph.startDestinationId) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                selected = entry?.destination?.route == label || label == "Agenda" && entry?.destination?.route in listOf("Actividades", "Calendario"), onClick = { nav.navigate(label) { popUpTo(nav.graph.startDestinationId); launchSingleTop = true } },
                 icon = { Icon(icons[i], contentDescription = label) }, label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }) } } },
             floatingActionButton = { if (entry?.destination?.route in listOf("Hoy", "Agenda", "Actividades")) FloatingActionButton(onClick = { editing = Activity(startDate = today(state.preferences.timezone).toString()) }) { Icon(Icons.Outlined.Add, "Crear actividad") } }
         ) { padding ->

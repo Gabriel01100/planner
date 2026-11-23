@@ -17,6 +17,7 @@ class NavigationTest {
         compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Prueba local").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Prueba local").assertIsDisplayed()
         compose.onNodeWithText("Agenda").performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { runCatching { compose.onNodeWithText("Semana").assertIsDisplayed(); true }.getOrDefault(false) }
         compose.onNodeWithText("Semana").assertIsDisplayed()
         compose.onNodeWithContentDescription("Ver estadísticas").performClick()
         compose.onNodeWithText("Tu progreso").assertIsDisplayed()
@@ -40,12 +41,20 @@ class NavigationTest {
     }
 
     @Test fun sharedTextRequiresReviewWithoutNetworkOrAutomaticSave() {
-        compose.activity.startActivity(android.content.Intent(compose.activity, MainActivity::class.java)
-            .setAction(android.content.Intent.ACTION_SEND).setType("text/plain")
-            .putExtra(android.content.Intent.EXTRA_TEXT, "Compartido explícitamente para revisar"))
-        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Revisar contenido compartido").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Compartido explícitamente para revisar").assertIsDisplayed()
-        compose.onNodeWithText("Analizar contenido").assertIsDisplayed()
+        val activity = compose.activity
+        val launchIntent = android.content.Intent(activity.intent)
+        try {
+            activity.startActivity(android.content.Intent(activity, MainActivity::class.java)
+                .setAction(android.content.Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(android.content.Intent.EXTRA_TEXT, "Compartido explícitamente para revisar"))
+            compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Revisar contenido compartido").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Compartido explícitamente para revisar").assertIsDisplayed()
+            compose.onNodeWithText("Analizar contenido").assertIsDisplayed()
+        } finally {
+            // ActivityScenario matches lifecycle events by the original launch intent.
+            // onNewIntent correctly retains ACTION_SEND in production; restore test identity before teardown.
+            compose.runOnUiThread { activity.intent = launchIntent }
+        }
     }
 
 }
