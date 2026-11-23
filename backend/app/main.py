@@ -17,20 +17,14 @@ from .models import AIRequest, AIResponse, PlanRequest, State, SyncRequest
 from .planner import plan, validate
 from .providers import OpenAICompatibleProvider
 
-class Base(DeclarativeBase):
-    pass
-
-class Document(Base):
-    __tablename__ = 'documents'
-    owner = Column(String(64), primary_key=True)
-    revision = Column(Integer, nullable=False, default=0)
-    payload = Column(Text, nullable=False)
-
+from .database import Document, make_engine, migrate
+from .security import Access
+from .learning import LearningService
+from .learning_api import learning_router
 
 def create_app(database_url=None, token=None):
-    engine = create_engine(database_url or os.getenv('DATABASE_URL', 'sqlite:///./calenflex.db'),
-                           connect_args={'check_same_thread': False} if (database_url or os.getenv('DATABASE_URL', 'sqlite:')).startswith('sqlite') else {})
-    Base.metadata.create_all(engine)
+    engine = make_engine(database_url or os.getenv('DATABASE_URL', 'sqlite:///./calenflex.db'))
+    migrate(engine)
     api_token = token if token is not None else os.getenv('CALENFLEX_TOKEN', '')
     calls = defaultdict(deque)
     lock = threading.Lock()
@@ -53,12 +47,14 @@ def create_app(database_url=None, token=None):
         request._body = bytes(body)
         return await call_next(request)
 
-    def authorize(authorization: str = Header(default='')):
-        if not api_token:
-            raise HTTPException(503, 'Configurá CALENFLEX_TOKEN en el servidor')
-        if not hmac.compare_digest(authorization.encode(), ('Bearer ' + api_token).encode()):
-            raise HTTPException(401, 'Credencial inválida')
-        return 'personal'
+    access = Access(engine, api_token)
+    authorize = access.owner_dependency('schedule:write')
+    read_agenda = access.owner_dependency('schedule:read')
+    service = LearningService(engine)
+    app.state.access = access
+    app.state.learning = service
+    app.state.engine = engine
+    app.include_router(learning_router(service, access))
 
     @app.get('/health')
     def health():
@@ -82,7 +78,7 @@ def create_app(database_url=None, token=None):
         return state
 
     @app.get('/api/sync')
-    def download(owner=Depends(authorize)):
+    def download(owner=Depends(read_agenda)):
         with Session(engine) as db:
             doc = db.get(Document, owner)
             return {'revision': doc.revision if doc else 0, 'state': json.loads(doc.payload) if doc else State().model_dump(mode='json')}
