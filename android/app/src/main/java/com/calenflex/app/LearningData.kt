@@ -23,12 +23,25 @@ import java.util.UUID
 })
 @Serializable data class MutationDto(val revision: Int, val entityId: String, val duplicate: Boolean = false, val message: String)
 @Serializable data class LearningCommand(val id: String = UUID.randomUUID().toString(), val kind: String, val body: JsonObject)
-@Serializable data class ActiveStudy(val activityId: String, val startedAt: String)
-@Serializable data class LearningSnapshot(val restorePending: Boolean = false, val insights: List<JsonObject> = emptyList(), val active: ActiveStudy? = null, val envelope: LearningEnvelope = LearningEnvelope(), val pending: List<LearningCommand> = emptyList())
+@Serializable data class ActiveStudy(val activityId: String, val startedAt: String, val occurrenceDate: String? = null)
+@Serializable data class LearningSnapshot(val restorePending: Boolean = false, val recoveryBase: LearningEnvelope? = null, val insights: List<JsonObject> = emptyList(), val active: ActiveStudy? = null, val envelope: LearningEnvelope = LearningEnvelope(), val pending: List<LearningCommand> = emptyList())
 @Entity(tableName = "learning_cache") data class LearningStored(@PrimaryKey val id: Int = 1, val payload: String)
 @Dao interface LearningDao {
     @Query("SELECT * FROM learning_cache WHERE id = 1") fun observe(): Flow<LearningStored?>
     @Query("SELECT * FROM learning_cache WHERE id = 1") suspend fun get(): LearningStored?
+    @Query("SELECT * FROM learning_cache WHERE id = 2") suspend fun recovery(): LearningStored?
+    @Query("DELETE FROM learning_cache WHERE id = 2") suspend fun discardRecovery()
+    @Transaction suspend fun importWithRecovery(value: LearningStored) {
+        require(recovery() == null) { "Ya hay una copia local protegida. Exportala y resolvé la recuperación antes de importar otra." }
+        get()?.let { put(it.copy(id = 2)) }
+        put(value)
+    }
+    @Transaction suspend fun recoverPrevious() {
+        val previous = recovery() ?: error("No hay una copia anterior")
+        val imported = get()
+        put(previous.copy(id = 1))
+        if(imported != null) put(imported.copy(id = 2)) else discardRecovery()
+    }
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(value: LearningStored)
 }
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -42,8 +55,7 @@ fun JsonObject.number(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrN
 fun JsonObject.withRows(key: String, rows: List<JsonObject>) = JsonObject(toMutableMap().apply { put(key, JsonArray(rows)) })
 fun LearningSnapshot.goals(): List<LearningGoalDto> = envelope.memory.rows("goals").map { json.decodeFromJsonElement(it) }
 
-class LearningRepository(private val dao: LearningDao, private val api: suspend () -> Api) {
-    private val mutex = Mutex()
+class LearningRepository(private val dao: LearningDao, internal val mutex: Mutex = Mutex(), private val api: suspend () -> Api) {
     val snapshots = dao.observe().map { it?.let { json.decodeFromString<LearningSnapshot>(it.payload) } ?: LearningSnapshot() }
     suspend fun current() = dao.get()?.let { json.decodeFromString<LearningSnapshot>(it.payload) } ?: LearningSnapshot()
     private suspend fun store(snapshot: LearningSnapshot) { dao.put(LearningStored(payload = json.encodeToString(snapshot))) }
@@ -56,32 +68,33 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         val memory = snapshot.envelope.memory.withRows("goals", snapshot.envelope.memory.rows("goals") + body)
         store(snapshot.copy(envelope = snapshot.envelope.copy(memory = memory), pending = snapshot.pending + LearningCommand(kind = "goal", body = body)))
     }
-    suspend fun begin(activityId: String) = mutex.withLock {
+    suspend fun begin(activityId: String, occurrenceDate: String? = null) = mutex.withLock {
+        occurrenceDate?.let { LocalDate.parse(it) }
         val snapshot = current()
         require(snapshot.active == null) { "Finalizá la sesión que está en curso" }
-        store(snapshot.copy(active = ActiveStudy(activityId, Instant.now().toString())))
+        store(snapshot.copy(active = ActiveStudy(activityId, Instant.now().toString(), occurrenceDate)))
     }
-    suspend fun clearActive() = mutex.withLock { store(current().copy(active = null)) }
-    suspend fun registerProgress(body: JsonObject) = mutex.withLock {
+    suspend fun clearActive() = mutex.withLock { clearActiveLocked() }
+    internal suspend fun clearActiveLocked() { store(current().copy(active = null)) }
+    suspend fun registerProgress(body: JsonObject) = mutex.withLock { registerProgressLocked(body) }
+    internal suspend fun registerProgressLocked(body: JsonObject) {
         val snapshot = current()
-        require(snapshot.goals().any { it.id == body.text("goalId") }) { "Elegí el objetivo de esta sesión" }
-        require(body.text("topic").isNotBlank() && body.text("topic").length <= 200) { "Indicá el tema trabajado" }
-        require(body.number("actualMinutes") == null || body.number("actualMinutes") in 1..1440) { "Revisá la duración real" }
-        require(body.text("confirmed") == "true") { "Confirmá la sesión" }
-        require(body.text("notes").length <= 4000 && body.text("subject").length <= 200 && body.text("evaluation").length <= 2000) { "Resumí las notas, materia o evaluación" }
-        listOf("understood", "needsReinforcement", "difficulties", "exercises", "subtopics", "pendingTasks").forEach { key ->
-            val values = body[key] as? JsonArray ?: JsonArray(emptyList())
-            require(values.size <= if(key == "pendingTasks") 20 else 50) { "Hay demasiados elementos en el registro" }
-            require(values.all { it.jsonPrimitive.content.isNotBlank() && it.jsonPrimitive.content.length <= 1000 }) { "Cada contenido debe tener entre 1 y 1000 caracteres" }
+        LearningIntegrity.command(body, "progress", snapshot.goals().map { it.id }.toSet())
+        snapshot.pending.firstOrNull { it.body.text("requestId") == body.text("requestId") }?.let { original ->
+            require(original.kind == "progress" && canonicalLearningCommand(original.body, "progress") == canonicalLearningCommand(body, "progress")) {
+                "Conflicto: el identificador ya está pendiente con otros datos. Conservamos el registro original."
+            }
+            return
         }
-        require(body.text("recommendedNextTopic").length <= 200)
-        body.text("sourceContentDigest").takeIf { it.isNotBlank() }?.let { require(it.matches(Regex("[0-9a-f]{64}"))) }
-
-        UUID.fromString(body.text("requestId")); val completedAt = Instant.parse(body.text("completedAt")); body.text("startedAt").takeIf { it.isNotBlank() }?.let { require(!Instant.parse(it).isAfter(completedAt)) { "La fecha de finalización es anterior al inicio" } }
-        if(snapshot.pending.any { it.body.text("requestId") == body.text("requestId") }) return@withLock
+        snapshot.envelope.memory.rows("receipts").firstOrNull { it.text("requestId") == body.text("requestId") }?.let { receipt ->
+            require(receipt.text("fingerprint") == learningRequestFingerprint(body,"progress")) { "Conflicto: el identificador ya fue confirmado con otros datos" }
+            return
+        }
+        validateStudySelection(snapshot.active, body)
         val local = buildJsonObject {
             put("id", body.text("sessionId").ifBlank { body.text("requestId") }); put("goalId", body.text("goalId"))
             put("completedAt", body.text("completedAt")); put("status", "completed")
+            put("occurrenceDate", body["occurrenceDate"] ?: JsonNull); put("startedAt", body["startedAt"] ?: JsonNull); put("plannedMinutes", body["plannedMinutes"] ?: JsonNull)
             put("activityId", body["activityId"] ?: JsonNull); put("notes", body.text("notes")); put("actualMinutes", body["actualMinutes"] ?: JsonNull)
         }
         val memory = snapshot.envelope.memory.withRows("sessions", snapshot.envelope.memory.rows("sessions") + local)
@@ -99,6 +112,9 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         require(!snapshot.restorePending) { "Revisá la copia importada antes de sincronizar el aprendizaje" }
         val client = api()
         val initialRemote = client.learning()
+        snapshot.recoveryBase?.let { base ->
+            require(sameLearningMemory(base.memory, initialRemote.memory)) { "Conflicto: el servidor cambió después de revisar la copia. Conservamos ambos estados; volvé a revisar la recuperación." }
+        }
         require(initialRemote.revision >= snapshot.envelope.revision) { "La memoria del servidor es anterior a tu copia. Conservamos los datos locales; revisá la recuperación." }
         while(snapshot.pending.isNotEmpty()) {
             val command = snapshot.pending.first()
@@ -110,41 +126,60 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
             }
             // A network failure after server commit replays the same stable ID safely.
             snapshot = snapshot.copy(envelope = snapshot.envelope.copy(revision = result.revision), pending = snapshot.pending.drop(1))
-            store(snapshot)
+            // Keep the durable queue until the validated pull succeeds; failed pulls replay stable IDs.
         }
         val remote = client.learning()
         require(remote.revision >= snapshot.envelope.revision) { "La revisión del servidor retrocedió. Conservamos tu memoria local; revisá la conexión o restaurá la copia." }
         require(remote.memory["schemaVersion"]?.jsonPrimitive?.int == 1) { "Memoria de una versión incompatible" }
+        LearningIntegrity.snapshot(LearningSnapshot(envelope = remote))
+        snapshot.recoveryBase?.let { base ->
+            require(containsLearningMemory(remote.memory, base.memory)) { "Conflicto: cambió información de la copia durante la sincronización. Conservamos los datos locales." }
+        }
         val insights = client.learningInsights().rows("items")
-        store(snapshot.copy(envelope = remote, insights = insights))
+        store(snapshot.copy(envelope = remote, insights = insights, recoveryBase = null))
     }
     suspend fun importBackup(text: String) = mutex.withLock {
         require(text.length <= 5_000_000) { "La copia supera 5 MB" }
-        val restored = json.decodeFromString<LearningSnapshot>(text)
-        require(restored.envelope.memory["schemaVersion"]?.jsonPrimitive?.int == 1)
-        require(restored.pending.all { it.kind in listOf("goal", "progress", "resource") })
-        require(restored.goals().map { it.id }.distinct().size == restored.goals().size)
-        restored.goals().forEach { UUID.fromString(it.id); require(it.title.isNotBlank() && it.title.length <= 200 && it.priority in 1..4 && (it.estimatedTotalMinutes == null || it.estimatedTotalMinutes >= 5)); it.targetDate?.let { date -> LocalDate.parse(date) } }
-        restored.pending.forEach { UUID.fromString(it.id) }
-        store(restored.copy(restorePending = true))
+        // Decode strictly: ignored unknown fields must never disappear on a round trip.
+        val strict = Json(json) { ignoreUnknownKeys = false }
+        val root = strict.parseToJsonElement(text).jsonObject
+        val envelope = root["envelope"] as? JsonObject
+        require(envelope?.get("memory") is JsonObject && (envelope["revision"] as? JsonPrimitive)?.intOrNull != null && root["pending"] is JsonArray) { "La copia no contiene el agregado, su revisión y su cola" }
+        val restored = strict.decodeFromString<LearningSnapshot>(text)
+        LearningIntegrity.snapshot(restored)
+        restored.recoveryBase?.let { LearningIntegrity.snapshot(LearningSnapshot(envelope = it)) }
+        // A single Room transaction protects the old payload in the existing cache table.
+        dao.importWithRecovery(LearningStored(payload = json.encodeToString(restored.copy(restorePending = true, recoveryBase = null))))
     }
+    suspend fun previousBackup(): String? = mutex.withLock { dao.recovery()?.payload }
+    suspend fun recoverPreviousBackup() = mutex.withLock { dao.recoverPrevious() }
+    suspend fun discardPreviousBackup() = mutex.withLock { dao.discardRecovery() }
     suspend fun resumeImportedBackup() = mutex.withLock {
         val snapshot = current(); val remote = api().learning()
+        LearningIntegrity.snapshot(snapshot)
+        LearningIntegrity.snapshot(LearningSnapshot(envelope = remote))
         val pendingGoals = snapshot.pending.filter { it.kind == "goal" }.map { it.body.text("id") }.toSet()
-        val pendingSessions = snapshot.pending.filter { it.kind == "progress" }.map { it.body.text("requestId") }.toSet()
-        require(snapshot.goals().all { it.id in pendingGoals || remote.memory.rows("goals").any { g -> g.text("id") == it.id } }) { "El servidor no contiene todos los objetivos de la copia. No descartamos datos; podés restaurarla en un servidor vacío." }
-        require(snapshot.envelope.memory.rows("sessions").all { local -> local.text("id") in pendingSessions || remote.memory.rows("sessions").any { it.text("id") == local.text("id") } }) { "Faltan sesiones en el servidor. Conservamos la copia local." }
-        store(snapshot.copy(restorePending = false, envelope = snapshot.envelope.copy(revision = remote.revision)))
+        val pendingSessions = snapshot.pending.filter { it.kind == "progress" }.map { it.body.text("sessionId").ifBlank { it.body.text("requestId") } }.toSet()
+        val confirmed = snapshot.envelope.memory
+            .withRows("goals", snapshot.envelope.memory.rows("goals").filterNot { it.text("id") in pendingGoals && remote.memory.rows("goals").none { r -> r.text("id") == it.text("id") } })
+            .withRows("sessions", snapshot.envelope.memory.rows("sessions").filterNot { it.text("id") in pendingSessions && remote.memory.rows("sessions").none { r -> r.text("id") == it.text("id") } })
+        require(sameLearningMemory(confirmed, remote.memory)) { "Conflicto: la copia y el servidor tienen información educativa diferente. Conservamos la copia importada y la local anterior; exportalas o recuperá la anterior antes de continuar." }
+        store(snapshot.copy(restorePending = false, recoveryBase = remote, envelope = snapshot.envelope.copy(revision = remote.revision)))
     }
     suspend fun restoreEmptyServer() = mutex.withLock {
-        val snapshot = current(); val client = api(); val remote = client.learning()
-        require(listOf("goals", "sessions", "events", "sources", "topics", "milestones", "nextSteps", "competencies").all { remote.memory.rows(it).isEmpty() }) { "El servidor tiene registros. No lo reemplazamos para evitar perder información." }
+        val snapshot = current(); LearningIntegrity.snapshot(snapshot); val client = api(); val remote = client.learning()
+        LearningIntegrity.snapshot(LearningSnapshot(envelope = remote))
+        require(LearningIntegrity.collections.all { remote.memory.rows(it).isEmpty() }) { "El servidor tiene registros. No lo reemplazamos para evitar perder información." }
+        val remotePreferences = canonicalEntity(remote.memory["preferences"] as? JsonObject ?: buildJsonObject {},"preferences")
+        val localPreferences = canonicalEntity(snapshot.envelope.memory["preferences"] as? JsonObject ?: buildJsonObject {},"preferences")
+        require(remotePreferences == canonicalEntity(buildJsonObject {},"preferences") || remotePreferences == localPreferences) { "El servidor conserva preferencias diferentes. Revisalas antes de restaurar la copia." }
         val pendingGoals = snapshot.pending.filter { it.kind == "goal" }.map { it.body.text("id") }.toSet()
-        val pendingSessions = snapshot.pending.filter { it.kind == "progress" }.map { it.body.text("requestId") }.toSet()
+        val pendingSessions = snapshot.pending.filter { it.kind == "progress" }.map { it.body.text("sessionId").ifBlank { it.body.text("requestId") } }.toSet()
         val base = snapshot.envelope.memory.withRows("goals", snapshot.envelope.memory.rows("goals").filterNot { it.text("id") in pendingGoals })
             .withRows("sessions", snapshot.envelope.memory.rows("sessions").filterNot { it.text("id") in pendingSessions })
+        LearningIntegrity.snapshot(LearningSnapshot(envelope = LearningEnvelope(memory = base)))
         val result = client.correctLearning(buildJsonObject { put("revision", remote.revision); put("memory", base); put("confirmed", true) })
-        store(snapshot.copy(restorePending = false, envelope = snapshot.envelope.copy(revision = result.revision)))
+        store(snapshot.copy(restorePending = false, recoveryBase = LearningEnvelope(result.revision, base), envelope = snapshot.envelope.copy(revision = result.revision)))
     }
     suspend fun deleteGoal(goalId: String) = mutex.withLock {
         val snapshot = current()
@@ -160,5 +195,13 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         val memory = snapshot.envelope.memory.withRows("goals", rows)
         api().correctLearning(buildJsonObject { put("revision", snapshot.envelope.revision); put("memory", memory); put("confirmed", true) })
         store(snapshot.copy(envelope = api().learning()))
+    }
+}
+
+val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE workspace ADD COLUMN syncBase TEXT")
+        db.execSQL("ALTER TABLE workspace ADD COLUMN syncRequest TEXT")
+        db.execSQL("ALTER TABLE workspace ADD COLUMN conflict TEXT")
     }
 }

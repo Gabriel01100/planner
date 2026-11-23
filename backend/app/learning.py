@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .database import LearningDocument, AuditEntry
 from .learning_models import (LearningMemory, MemoryEnvelope, MutationResult, LearningGoal,
     LearningMilestone, Topic, StudySession, ProgressEvent, SourceReference, NextStep,
-    SessionRegistration, Receipt, GoalDetails)
+    SessionRegistration, Receipt, GoalDetails, Competency)
 
 
 def normalized(text):
@@ -30,8 +30,9 @@ class LearningService:
             return MemoryEnvelope(revision=row.revision if row else 0,
                                   memory=LearningMemory.model_validate_json(row.payload) if row else LearningMemory())
 
-    def mutate(self, owner, action, change, expected=None):
-        with Session(self.engine) as db:
+    def mutate(self, owner, action, change, expected=None, session=None):
+        from contextlib import nullcontext
+        with (nullcontext(session) if session is not None else Session(self.engine)) as db:
             row = db.get(LearningDocument, owner)
             revision = row.revision if row else 0
             if expected is not None and expected != revision:
@@ -54,7 +55,8 @@ class LearningService:
                 db.add(LearningDocument(owner=owner, payload=payload, revision=1))
             db.add(AuditEntry(id=str(uuid4()), owner=owner, action=action, at=utcnow().isoformat(), entity_id=str(entity_id)))
             try:
-                db.commit()
+                if session is None: db.commit()
+                else: db.flush()
             except IntegrityError:
                 db.rollback()
                 raise HTTPException(409, 'La memoria fue modificada por otra conexión')
@@ -99,7 +101,7 @@ class LearningService:
             return session.id, old is not None
         return self.mutate(owner, 'session.create', change)
 
-    def register_progress(self, owner, command: SessionRegistration):
+    def register_progress(self, owner, command: SessionRegistration, session=None, occurrence_date=None):
         raw = command.model_dump(mode='json', exclude={'requestId', 'confirmed'}, exclude_defaults=True)
         fingerprint = hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         def change(memory):
@@ -110,15 +112,20 @@ class LearningService:
                     raise HTTPException(409, 'La clave de idempotencia ya se utilizó con otros datos')
                 return receipt.entityId, True
             same = next((r for r in memory.receipts if r.fingerprint == fingerprint), None)
-            if same:
+            if same and command.sourceType != 'manual':
+                # Imported content may be deduplicated, but its new request still
+                # needs a receipt to reject later reuse with different content.
+                memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=same.entityId))
                 return same.entityId, True
             if command.sourceContentDigest and command.sourceType != 'manual':
                 source_ids = {source.id for source in memory.sources if source.contentDigest == command.sourceContentDigest}
                 matching = next((event for event in memory.events if event.goalId == command.goalId and event.sourceReferenceId in source_ids and event.sessionId
                     and any(session.id == event.sessionId and session.completedAt.date() == command.completedAt.date()
+                            and session.activityId == command.activityId and session.occurrenceDate == (command.occurrenceDate or occurrence_date)
                             and (not command.startedAt or session.startedAt == command.startedAt) for session in memory.sessions)
                     and any(topic.id == event.topicId and normalized(topic.title) == normalized(command.topic) and normalized(topic.subject) == normalized(command.subject) for topic in memory.topics)), None)
                 if matching:
+                    memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=matching.sessionId))
                     return matching.sessionId, True
             topic = next((t for t in memory.topics if t.goalId == command.goalId and normalized(t.title) == normalized(command.topic) and normalized(t.subject) == normalized(command.subject)), None)
             if not topic:
@@ -134,6 +141,7 @@ class LearningService:
             memory.sources.append(source)
             session = StudySession(id=session_id, goalId=command.goalId, topicId=topic.id,
                 activityId=command.activityId or (old.activityId if old else None),
+                occurrenceDate=command.occurrenceDate or occurrence_date or (old.occurrenceDate if old else None),
                 startedAt=command.startedAt or (old.startedAt if old else None), completedAt=command.completedAt,
                 plannedMinutes=command.plannedMinutes or (old.plannedMinutes if old else None),
                 actualMinutes=command.actualMinutes, status='completed', notes=command.notes)
@@ -143,6 +151,21 @@ class LearningService:
                 sourceReferenceId=source.id, evidenceType='confirmed', understood=command.understood,
                 needsReinforcement=command.needsReinforcement, difficulties=command.difficulties,
                 exercises=command.exercises, evaluation=command.evaluation, subtopics=command.subtopics))
+            if command.assessment:
+                evidence = ProgressEvent(goalId=command.goalId, topicId=topic.id, sessionId=session_id,
+                    eventType='assessment', occurredAt=command.completedAt, sourceReferenceId=source.id,
+                    evidenceType='confirmed', description=f'{command.assessment.correctCount}/{command.assessment.totalCount}: {command.assessment.method}',
+                    evaluation='Resultado y confianza declarados explícitamente por el usuario')
+                memory.events.append(evidence)
+                competency = next((c for c in memory.competencies if c.topicId == topic.id), None)
+                if competency is None:
+                    competency = Competency(topicId=topic.id)
+                    memory.competencies.append(competency)
+                competency.estimatedLevel = command.assessment.correctCount / command.assessment.totalCount
+                competency.confidence = command.assessment.confidence
+                competency.lastEvaluatedAt = command.completedAt
+                competency.assessmentMethod = command.assessment.method
+                competency.evidenceIds = list(dict.fromkeys(competency.evidenceIds + [evidence.id]))
             # A statement of understanding is a user report, not an assessment of mastery.
             for description in command.pendingTasks + ([command.recommendedNextTopic] if command.recommendedNextTopic else []):
                 if not any(s.goalId == command.goalId and s.status in ['pending', 'active'] and normalized(s.description) == normalized(description) for s in memory.nextSteps):
@@ -151,7 +174,7 @@ class LearningService:
                         rationale='Propuesto al registrar la sesión; estimación revisable', isEstimate=True))
             memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=session_id))
             return session_id, False
-        return self.mutate(owner, 'progress.register', change)
+        return self.mutate(owner, 'progress.register', change, session=session)
 
     def register_resource(self, owner, command):
         raw = command.model_dump(mode='json', exclude={'requestId', 'confirmed'}, exclude_defaults=True)
@@ -166,6 +189,7 @@ class LearningService:
             content_digest = command.contentDigest or fingerprint
             source = next((s for s in memory.sources if s.contentDigest == content_digest and s.sourceType == command.sourceType), None)
             if source and any(e.goalId == command.goalId and e.sourceReferenceId == source.id for e in memory.events):
+                memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=source.id))
                 return source.id, True
             if not source:
                 source = SourceReference(sourceType=command.sourceType, sourceTitle=command.title,
@@ -182,7 +206,7 @@ class LearningService:
         memory = self.read(owner).memory
         goal = self.goal(memory, goal_id)
         completed = [s for s in memory.sessions if s.goalId == goal_id and s.status == 'completed']
-        return GoalDetails(goal=goal, completedMinutes=sum(s.actualMinutes or 0 for s in completed),
+        return GoalDetails(goal=goal, competencies=[c for c in memory.competencies if c.topicId in {t.id for t in memory.topics if t.goalId == goal_id}], completedMinutes=sum(s.actualMinutes or 0 for s in completed),
             completedSessions=len(completed), unknownDurationSessions=sum(s.actualMinutes is None for s in completed),
             milestones=sorted([m for m in memory.milestones if m.goalId == goal_id], key=lambda m: m.order),
             topics=[t for t in memory.topics if t.goalId == goal_id],

@@ -1,0 +1,13 @@
+# Seguridad
+
+OAuth verifica JWT RS256, firma/JWKS, emisor exacto (incluida barra final si el proveedor la usa), audiencia, exp/iat/sub y scopes. La identidad canónica deriva de emisor normalizado + sub, salvo una vinculación explícita con doble posesión. Nunca se admite owner del cuerpo como identidad. Tokens administrados se guardan por hash; Android cifra credenciales con Keystore/AES-GCM. CALENFLEX_TOKEN conserva el espacio histórico personal. Revocar credenciales no elimina datos.
+
+Scopes: memory:read, memory:write, schedule:read, schedule:write, schedule:approve y preferences:write. Las operaciones importantes requieren revisión/confirmación y scope adicional. El reemplazo de memoria no puede modificar preferencias sin preferences:write. Herramientas MCP revalidan identidad/permisos por llamada. Otro usuario recibe no encontrado para IDs ajenos.
+
+Vinculación: OAuth Authorization Code + PKCE S256/state, código aleatorio de un uso válido cinco minutos, hash en base y confirmación explícita. El navegador mantiene access token solo en memoria; callback limpia query, el código PKCE temporal se elimina de sessionStorage. No hay client secret en frontend. El proveedor debe habilitar cliente público, redirect URI exacto y CORS del token endpoint. No se transfieren datos entre owners ni se reemplaza un espacio OAuth con datos. No ingresar códigos en chats. El token MCP requiere su propio consentimiento; la vinculación no lo crea.
+
+Producción exige CALENFLEX_DATA_KEY, HTTPS y secretos fuera de Git. Fernet protege payloads del servidor; las copias JSON son texto claro. Room usa almacenamiento privado/cifrado del dispositivo, no SQLCipher. Perder la clave del backend impide descifrar datos. Una clave incorrecta detiene el arranque.
+
+Límites: solicitudes 5 MB, importaciones 2 MB, contextos y agregados acotados, rate limiting por scope/usuario y cuota de IA por proceso. El despliegue reproducible usa un worker; escalar requiere cuota distribuida. CORS está cerrado salvo origins explícitos; ALLOWED_HOSTS se configura en producción. MCP añade protección de host/rebinding. No se confía en instrucciones importadas, no hay SQL generado ni descarga automática de URLs.
+
+Observabilidad: request ID generado por servidor, plantilla de ruta, estado y duración; sin cuerpos, prompts, query ni tokens. Docker desactiva access logs de uvicorn para evitar query de callback OAuth. /health es liveness, /ready comprueba base. Proteger también logs del proxy externo. Auditoría registra identificadores pseudónimos y acciones, no notas. Respaldar base y clave por separado, probar restauración y fijar retención según necesidades reales; esta versión no es una plataforma de equipos con retención distribuida.

@@ -179,3 +179,40 @@ def test_remaining_tools_use_same_validated_services_and_autonomy_cannot_be_esca
     assert call(client, 'update_user_preferences', {'preferences': {'autonomy': 'fully_autonomous'}, 'memoryRevision': memory_revision + 1, 'confirmed': True})['isError']
     assert app.state.learning.read('mcp-user').memory.preferences.autonomy == 'suggestions'
     assert structured(call(client, 'get_behavior_insights', {}))['items'] == []
+
+
+def test_oidc_link_resolves_mobile_owner_and_isolates_other_subject(mcp_api):
+    from types import SimpleNamespace
+    client,app,_=mcp_api
+    private=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+    app.state.access.jwt_client=SimpleNamespace(get_signing_key_from_jwt=lambda token: SimpleNamespace(key=private.public_key()))
+    def token(subject):
+        now=datetime.now(timezone.utc)
+        return jwt.encode({'sub':subject,'iss':ISSUER,'aud':RESOURCE,'iat':now,'exp':now+timedelta(minutes=5),'scope':' '.join(SCOPES)},private,algorithm='RS256')
+    client.headers['Authorization']='Bearer legacy-test'
+    from app.learning_models import LearningGoal
+    app.state.learning.create_goal('personal',LearningGoal(title='Memoria del móvil'))
+    code=client.post('/api/v1/connections/link/start').json()['code']
+    client.headers['Authorization']='Bearer '+token('linked')
+    assert client.get('/api/v1/learning').json()['memory']['goals']==[]
+    assert client.post('/api/v1/connections/link/claim',json={'code':code,'confirmed':True}).status_code==200
+    assert client.get('/api/v1/connections/identity').json()['workspaceId']=='personal'
+    assert structured(call(client,'get_study_goals',{}))['items'][0]['title']=='Memoria del móvil'
+    client.headers['Authorization']='Bearer '+token('stranger')
+    assert structured(call(client,'get_study_goals',{}))['items']==[]
+
+
+def test_unlink_removes_oidc_access_but_preserves_mobile_data(mcp_api):
+    from app.database import AccountLink
+    from app.learning_models import LearningGoal
+    from sqlalchemy.orm import Session
+    client,app,_=mcp_api
+    app.state.learning.create_goal('personal',LearningGoal(title='Conservar'))
+    with Session(app.state.engine) as db:
+        db.add(AccountLink(identity='oauth-id',owner='personal'));db.commit()
+    client.headers['Authorization']='Bearer legacy-test'
+    assert client.get('/api/v1/connections/links').json()['items']==['oauth-id']
+    assert client.post('/api/v1/connections/links/oauth-id/revoke',json={'confirmed':False}).status_code==422
+    assert client.post('/api/v1/connections/links/oauth-id/revoke',json={'confirmed':True}).status_code==200
+    assert app.state.learning.read('personal').memory.goals[0].title=='Conservar'
+    assert client.get('/api/v1/connections/links').json()['items']==[]

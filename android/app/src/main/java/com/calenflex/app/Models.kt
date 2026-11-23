@@ -12,6 +12,7 @@ fun clock(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
 
 @Serializable data class Window(val days: List<Int> = (0..6).toList(), val start: Int = 480, val end: Int = 1320)
 @Serializable data class Activity(
+    val dependencies: List<String> = emptyList(),
     val goalId: String? = null, val id: String = UUID.randomUUID().toString(), val title: String = "", val description: String = "",
     val category: String = "Personal", val startDate: String = today().toString(), val deadline: String? = null,
     val duration: Int = 60, val priority: Int = 2, val status: String = "Pendiente", val frequency: String = "Única",
@@ -22,6 +23,7 @@ fun clock(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
 )
 @Serializable data class Slot(val activityId: String, val date: String, val start: Int, val end: Int, val completed: Boolean = false)
 @Serializable data class Preferences(
+    val maxDailyMinutes: Int = 1440,
     val name: String = "", val timezone: String = "America/Argentina/Buenos_Aires", val theme: String = "Sistema",
     val transition: Int = 0, val reminderMinutes: Int = 15, val notifications: Boolean = true,
     val notificationKinds: List<String> = listOf("before", "start")
@@ -44,6 +46,15 @@ fun validateState(state: State) {
     ZoneId.of(state.preferences.timezone)
     require(state.activities.size <= 2000 && state.schedule.size <= 10000 && state.history.size <= 10000 && state.pending.size <= 10000)
     require(state.preferences.notificationKinds.all { it in listOf("before", "start", "overdue", "daily", "weekly", "pending") })
+    require(state.preferences.maxDailyMinutes in 5..1440)
+    val ids = state.activities.map { it.id }.toSet()
+    var remaining = state.activities.associate { it.id to it.dependencies.toSet() }
+    require(state.activities.all { a -> a.dependencies.size <= 100 && a.dependencies.all { it in ids && it != a.id } }) { "Dependencia inexistente o propia" }
+    while(remaining.isNotEmpty()) {
+        val ready = remaining.filterValues { it.isEmpty() }.keys
+        require(ready.isNotEmpty()) { "Dependencias cíclicas" }
+        remaining = remaining.filterKeys { it !in ready }.mapValues { it.value - ready }
+    }
     require(state.activities.map { it.id }.distinct().size == state.activities.size) { "Actividades duplicadas" }
     require(state.schedule.map { it.activityId to it.date }.distinct().size == state.schedule.size) { "Ocurrencias duplicadas" }
     require(state.preferences.transition in 0..180 && state.preferences.reminderMinutes in 0..1440)
@@ -85,4 +96,10 @@ fun freeWindows(state: State, day: LocalDate): List<Pair<Int, Int>> {
         }
     }
     return free
+}
+
+fun State.withCompletedActivity(activityId: String, date: String? = null): State {
+    require(activities.any { it.id == activityId }) { "Actividad no encontrada" }
+    return copy(activities = activities.map { if(it.id == activityId && (date == null || it.frequency == "Única")) it.copy(status = "Completada") else it },
+        schedule = schedule.map { if(it.activityId == activityId && (date == null || it.date == date)) it.copy(completed = true) else it })
 }

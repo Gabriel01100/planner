@@ -57,6 +57,7 @@ class StudySession(Contract):
     goalId: UUID
     topicId: UUID | None = None
     activityId: UUID | None = None
+    occurrenceDate: date | None = None
     startedAt: AwareDatetime | None = None
     completedAt: AwareDatetime | None = None
     plannedMinutes: int | None = Field(default=None, ge=1, le=1440)
@@ -66,6 +67,8 @@ class StudySession(Contract):
 
     @model_validator(mode='after')
     def timing(self):
+        if self.occurrenceDate and not self.activityId:
+            raise ValueError('La ocurrencia requiere una actividad')
         if self.startedAt and self.completedAt and self.completedAt < self.startedAt:
             raise ValueError('El fin de sesión es anterior al inicio')
         if self.status == 'completed' and self.completedAt is None:
@@ -118,7 +121,9 @@ class NextStep(Contract):
     isEstimate: bool = True
 
 class LearningPreferences(Contract):
-    autonomy: Literal['suggestions', 'bounded'] = 'bounded'
+    automaticEnabled: bool = False
+    maxShiftMinutes: int = Field(default=30, ge=5, le=60)
+    autonomy: Literal['suggestions', 'bounded'] = 'suggestions'
     preferredSessionMinutes: int = Field(default=45, ge=5, le=180)
     breakMinutes: int = Field(default=10, ge=0, le=60)
     dailyStudyLimitMinutes: int = Field(default=180, ge=15, le=720)
@@ -206,7 +211,21 @@ class MemoryEnvelope(Contract):
     revision: int = Field(ge=0)
     memory: LearningMemory
 
+class AssessmentData(Contract):
+    correctCount: int = Field(ge=0, le=10000)
+    totalCount: int = Field(ge=1, le=10000)
+    method: str = Field(min_length=1, max_length=1000)
+    # Explicitly supplied estimate, not a calibrated probability or inferred by the LLM.
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode='after')
+    def valid_score(self):
+        if self.correctCount > self.totalCount:
+            raise ValueError('El resultado correcto supera el total evaluado')
+        return self
+
 class SessionRegistration(Contract):
+    assessment: AssessmentData | None = None
     requestId: UUID
     goalId: UUID
     topic: str = Field(min_length=1, max_length=200)
@@ -214,6 +233,7 @@ class SessionRegistration(Contract):
     notes: str = Field(default='', max_length=4000)
     sessionId: UUID | None = None
     activityId: UUID | None = None
+    occurrenceDate: date | None = None
     startedAt: AwareDatetime | None = None
     completedAt: AwareDatetime
     plannedMinutes: int | None = Field(default=None, ge=1, le=1440)
@@ -236,6 +256,8 @@ class SessionRegistration(Contract):
 
     @model_validator(mode='after')
     def explicitly_confirmed(self):
+        if self.occurrenceDate and not self.activityId:
+            raise ValueError('La ocurrencia requiere una actividad')
         if self.sourceUrl and not self.sourceUrl.startswith(('https://', 'http://')):
             raise ValueError('Solo se admiten referencias HTTP(S)')
         if not self.confirmed:
@@ -254,6 +276,7 @@ class MutationResult(Contract):
     message: str
 
 class GoalDetails(Contract):
+    competencies: list[Competency] = Field(default_factory=list)
     goal: LearningGoal
     completedMinutes: int
     completedSessions: int

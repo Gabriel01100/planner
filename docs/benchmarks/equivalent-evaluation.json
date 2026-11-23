@@ -1,0 +1,1426 @@
+{
+  "decision": "Keep greedy in production; bounded sample does not demonstrate general equivalence or improvement. CP-SAT remains optional.",
+  "criteria": "priorityScore*1000000 + scheduled*10000 - movedOrRemoved*100 - preferenceDeviationMinutes - peakDailyMinutes*10",
+  "cases": [
+    {
+      "name": "dependencias",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [
+                "00000000-0000-0000-0000-000000000001"
+              ],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000002",
+              "title": "Tarea 2",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 1,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000001",
+              "title": "Tarea 1",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 30,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 7,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 30,
+        "peakDailyMinutes": 90,
+        "score": 7019070
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 7,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 60,
+        "score": 7019400
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "recurrencias",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000003",
+              "title": "Tarea 3",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Diaria",
+              "interval": 1,
+              "days": [
+                0,
+                2,
+                4
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000004",
+              "title": "Tarea 4",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Semanal",
+              "interval": 1,
+              "days": [
+                1,
+                3
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 5,
+        "priorityScore": 15,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 60,
+        "score": 15049400
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 5,
+        "priorityScore": 15,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 60,
+        "score": 15049400
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "bloqueos_buffers",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000005",
+              "title": "Tarea 5",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": 600,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000006",
+              "title": "Tarea 6",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [
+            {
+              "activityId": "00000000-0000-0000-0000-000000000063",
+              "date": "2027-01-04",
+              "start": 480,
+              "end": 540,
+              "completed": false
+            }
+          ],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 15,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 6,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 195,
+        "peakDailyMinutes": 120,
+        "score": 6018605
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 6,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 60,
+        "peakDailyMinutes": 60,
+        "score": 6019340
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "carga",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000007",
+              "title": "Tarea 7",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 90,
+              "priority": 4,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000008",
+              "title": "Tarea 8",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 90,
+              "priority": 1,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000009",
+              "title": "Tarea 9",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 90,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000a",
+              "title": "Tarea 10",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 90,
+              "priority": 3,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000b",
+              "title": "Tarea 11",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 90,
+              "priority": 4,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 180,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 5,
+        "priorityScore": 11,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 180,
+        "peakDailyMinutes": 180,
+        "score": 11048020
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 5,
+        "priorityScore": 11,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 90,
+        "score": 11049100
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "fechas_y_exclusiones",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000c",
+              "title": "Tarea 12",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": "2027-01-04",
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1000
+                }
+              ],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000d",
+              "title": "Tarea 13",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                1
+              ],
+              "until": null,
+              "skippedDates": [
+                "2027-01-04"
+              ],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 6,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 460,
+        "peakDailyMinutes": 60,
+        "score": 6018940
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 2,
+        "priorityScore": 6,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 460,
+        "peakDailyMinutes": 60,
+        "score": 6018940
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "estabilidad",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000001",
+              "title": "Tarea 1",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 30,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [
+            {
+              "activityId": "00000000-0000-0000-0000-000000000001",
+              "date": "2027-01-04",
+              "start": 600,
+              "end": 630,
+              "completed": false
+            }
+          ],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 1,
+        "priorityScore": 3,
+        "movedOrRemoved": 1,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 30,
+        "score": 3009600
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 1,
+        "priorityScore": 3,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 60,
+        "peakDailyMinutes": 30,
+        "score": 3009640
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "historial",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-000000000001",
+              "title": "Tarea 1",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-04",
+              "deadline": null,
+              "duration": 30,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [
+            {
+              "activityId": "00000000-0000-0000-0000-000000000001",
+              "date": "2027-01-04",
+              "start": 300,
+              "end": 330,
+              "completed": true
+            }
+          ],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-01-04",
+        "days": 5,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 0,
+        "priorityScore": 0,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 0,
+        "score": 0
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 0,
+        "priorityScore": 0,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 0,
+        "score": 0
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "dst",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000e",
+              "title": "DST",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-03-14",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Única",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": 150,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 0,
+              "end": 1440
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/New_York",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-03-14",
+        "days": 1,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 0,
+        "priorityScore": 0,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 0,
+        "score": 0
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 0,
+        "priorityScore": 0,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 0,
+        "score": 0
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    },
+    {
+      "name": "fin_de_mes",
+      "input": {
+        "state": {
+          "schemaVersion": 1,
+          "activities": [
+            {
+              "dependencies": [],
+              "goalId": null,
+              "id": "00000000-0000-0000-0000-00000000000f",
+              "title": "Mensual",
+              "description": "",
+              "category": "Personal",
+              "startDate": "2027-01-31",
+              "deadline": null,
+              "duration": 60,
+              "priority": 2,
+              "status": "Pendiente",
+              "frequency": "Mensual",
+              "interval": 1,
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "until": null,
+              "skippedDates": [],
+              "windows": [
+                {
+                  "days": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ],
+                  "start": 480,
+                  "end": 1320
+                }
+              ],
+              "excluded": [],
+              "preferredStart": 540,
+              "fixedStart": null,
+              "leadMinutes": 0,
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          ],
+          "availability": [
+            {
+              "days": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "start": 480,
+              "end": 1320
+            }
+          ],
+          "blocked": [],
+          "schedule": [],
+          "pending": [],
+          "preferences": {
+            "name": "",
+            "timezone": "America/Argentina/Buenos_Aires",
+            "theme": "Sistema",
+            "maxDailyMinutes": 1440,
+            "transition": 0,
+            "reminderMinutes": 15,
+            "notifications": true,
+            "notificationKinds": [
+              "before",
+              "start"
+            ]
+          },
+          "history": []
+        },
+        "start": "2027-02-27",
+        "days": 3,
+        "now": "2027-01-01T00:00:00Z"
+      },
+      "baseline": {
+        "conflicts": 0,
+        "scheduled": 1,
+        "priorityScore": 3,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 60,
+        "score": 3009400
+      },
+      "cpsat": {
+        "conflicts": 0,
+        "scheduled": 1,
+        "priorityScore": 3,
+        "movedOrRemoved": 0,
+        "preferenceDeviationMinutes": 0,
+        "peakDailyMinutes": 60,
+        "score": 3009400
+      },
+      "solverStatus": "OPTIMAL",
+      "sameConstraints": true,
+      "sameScoring": true
+    }
+  ]
+}

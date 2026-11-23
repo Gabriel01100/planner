@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from fastapi import Header, HTTPException
 from sqlalchemy.orm import Session
-from .database import Credential, RevokedToken, AuditEntry
+from .database import Credential, RevokedToken, AuditEntry, AccountLink
 from uuid import uuid4
 from datetime import datetime, timezone
 
@@ -23,6 +23,8 @@ class Principal:
     owner: str
     scopes: frozenset[str]
     token_digest: str
+    auth_kind: str = "admin"
+    identity: str | None = None
 
 class Access:
     def __init__(self, engine, legacy_token=''):
@@ -45,11 +47,11 @@ class Access:
             if db.get(RevokedToken, hashed):
                 raise HTTPException(401, 'Conexión revocada')
             if self.legacy_token and hmac.compare_digest(token.encode(), self.legacy_token.encode()):
-                return Principal('personal', frozenset(SCOPES), hashed)
+                return Principal('personal', frozenset(SCOPES), hashed, 'legacy')
             credential = db.get(Credential, hashed)
             if credential and not credential.revoked:
                 return Principal(credential.owner, frozenset(credential.scopes.split()), hashed)
-        issuer = os.getenv('OAUTH_ISSUER', '').rstrip('/')
+        issuer = os.getenv('OAUTH_ISSUER', '')
         audience = os.getenv('OAUTH_RESOURCE_URL', '').rstrip('/')
         jwks = os.getenv('OAUTH_JWKS_URL', '')
         if issuer and audience and jwks:
@@ -66,7 +68,11 @@ class Access:
                 if not isinstance(subject, str) or not subject or not isinstance(claims.get('scope', ''), str):
                     raise ValueError('Identidad inválida')
                 scopes = frozenset(claims.get('scope', '').split()) & SCOPES
-                return Principal(digest(issuer + '|' + subject), scopes, hashed)
+                identity = digest(issuer.rstrip('/') + '|' + subject)
+                with Session(self.engine) as db:
+                    link = db.get(AccountLink, identity)
+                    owner = link.owner if link else identity
+                return Principal(owner, scopes, hashed, 'oidc', identity)
             except (jwt.PyJWTError, ValueError, TypeError):
                 raise HTTPException(401, 'Token OAuth inválido o vencido')
         if not self.legacy_token:

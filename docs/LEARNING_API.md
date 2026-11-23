@@ -25,3 +25,9 @@ El usuario puede corregir campos con control de revisión, exportar/importar el 
 ## Ejemplo manual
 
 Crear un objetivo, guardar su id, luego enviar una sesión con un requestId UUID fijo, goalId confirmado, topic, completedAt con zona horaria, actualMinutes si se conoce y confirmed=true. Consultar el detalle devuelve los minutos reales y los siguientes pasos propuestos. No suministrar un owner en el JSON: lo determina exclusivamente la conexión autenticada.
+
+## Consolidación 1.2
+
+SessionRegistration admite assessment opcional con correctCount, totalCount, method y confidence declarada (0..1). Solo resultados explícitos confirmados generan un evento assessment y actualizan la competencia de ese tema; estimatedLevel=correctCount/totalCount. No es una certificación ni una inferencia del agente. Mismo requestId no duplica eventos. Si activityId está presente debe existir en el mismo espacio y coincidir con el objetivo asociado; LearningWorkflow registra progreso y completa agenda en una única transacción.
+
+PUT de memoria completa exige además preferences:write si cambia preferencias; no permite habilitar autonomía usando solo memory:write. PUT /api/v1/learning/preferences separa esa intención. La lista de endpoints y scopes de conexión está en API.md y MCP.md.

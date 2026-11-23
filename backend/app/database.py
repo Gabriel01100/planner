@@ -51,6 +51,25 @@ class StoredProposal(Base):
     applied_revision = Column(Integer, nullable=True)
     status = Column(String(20), nullable=False, default='pending')
 
+class SyncReceipt(Base):
+    __tablename__ = 'sync_receipts'
+    owner = Column(String(64), primary_key=True)
+    request_id = Column(String(36), primary_key=True)
+    fingerprint = Column(String(64), nullable=False)
+    payload = Column(ProtectedText(), nullable=False)
+
+class AccountLink(Base):
+    __tablename__ = 'account_links'
+    identity = Column(String(64), primary_key=True)
+    owner = Column(String(64), nullable=False, index=True)
+
+class LinkChallenge(Base):
+    __tablename__ = 'link_challenges'
+    digest = Column(String(64), primary_key=True)
+    owner = Column(String(64), nullable=False)
+    expires_at = Column(String(40), nullable=False)
+    used = Column(Integer, nullable=False, default=0)
+
 class SchemaVersion(Base):
     __tablename__ = 'schema_versions'
     version = Column(Integer, primary_key=True)
@@ -67,7 +86,7 @@ def migrate(engine):
     if inspector.has_table('schema_versions'):
         with Session(engine) as db:
             versions = db.scalars(select(SchemaVersion.version)).all()
-            if versions and max(versions) > 4:
+            if versions and max(versions) > 5:
                 raise RuntimeError('Esta base pertenece a una versión más nueva')
     with engine.begin() as connection:
         if engine.dialect.name == 'sqlite':
@@ -79,8 +98,8 @@ def migrate(engine):
         # Validate every existing envelope first, then rewrite legacy plaintext in the same transaction.
         from sqlalchemy import text
         transforms = []
-        for table, key, columns in [('documents', 'owner', ['payload']), ('learning_documents', 'owner', ['payload']), ('plan_proposals', 'id', ['payload', 'previous'])]:
-            for row in connection.exec_driver_sql(f"SELECT {key}, {', '.join(columns)} FROM {table}").mappings():
+        for table, keys, columns in [('documents', ['owner'], ['payload']), ('learning_documents', ['owner'], ['payload']), ('plan_proposals', ['id'], ['payload', 'previous']), ('sync_receipts', ['owner','request_id'], ['payload'])]:
+            for row in connection.exec_driver_sql(f"SELECT {', '.join(keys+columns)} FROM {table}").mappings():
                 updates = {}
                 for column in columns:
                     value = row[column]
@@ -88,12 +107,14 @@ def migrate(engine):
                     if protector and not value.startswith(PREFIX):
                         updates[column] = seal(value)
                 if updates:
-                    transforms.append((table, key, row[key], updates))
-        for table, key, identity, values in transforms:
+                    transforms.append((table, {key: row[key] for key in keys}, updates))
+        for table, identities, values in transforms:
             assignments = ', '.join(f'{column} = :{column}' for column in values)
-            connection.execute(text(f'UPDATE {table} SET {assignments} WHERE {key} = :identity'), dict(values, identity=identity))
+            condition = ' AND '.join(f'{key} = :identity_{key}' for key in identities)
+            parameters = dict(values, **{f'identity_{key}': value for key,value in identities.items()})
+            connection.execute(text(f'UPDATE {table} SET {assignments} WHERE {condition}'), parameters)
         existing = set(connection.execute(select(SchemaVersion.version)).scalars())
-        for version in (1, 2, 3, 4):
+        for version in (1, 2, 3, 4, 5):
             if version not in existing:
                 connection.execute(SchemaVersion.__table__.insert().values(
                     version=version, applied_at=datetime.now(timezone.utc).isoformat()))

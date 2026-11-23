@@ -203,7 +203,7 @@ def test_legacy_migration_preserves_exact_payload_and_revision(tmp_path):
     with Session(engine) as db:
         assert db.get(Document, 'personal').revision == 17
         assert db.get(Document, 'personal').payload == original
-        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2, 3, 4]
+        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2, 3, 4, 5]
     with engine.begin() as c:
         c.execute(text("INSERT INTO schema_versions VALUES (99, 'future')"))
     with pytest.raises(RuntimeError, match='más nueva'):
@@ -220,6 +220,8 @@ def test_reimported_source_digest_does_not_duplicate_session_even_if_recording_t
     second = client.post('/api/v1/learning/progress', json=body).json()
     assert second['duplicate'] and second['entityId'] == first['entityId']
     assert len(client.get('/api/v1/learning').json()['memory']['sessions']) == 1
+    body['actualMinutes'] = 90
+    assert client.post('/api/v1/learning/progress', json=body).status_code == 409
 
 
 def test_resource_is_deduplicated_without_inventing_study_or_mastery(api):
@@ -229,6 +231,10 @@ def test_resource_is_deduplicated_without_inventing_study_or_mastery(api):
     first = client.post('/api/v1/learning/resources', json=body)
     assert first.status_code == 200
     assert client.post('/api/v1/learning/resources', json=body).json()['duplicate']
+    body['requestId'] = str(uuid4())
+    assert client.post('/api/v1/learning/resources', json=body).json()['duplicate']
+    body['summary'] = 'Otro contenido para el mismo requestId'
+    assert client.post('/api/v1/learning/resources', json=body).status_code == 409
     memory = client.get('/api/v1/learning').json()
     assert len(memory['memory']['sources']) == 1
     assert not memory['memory']['sessions'] and not memory['memory']['competencies']

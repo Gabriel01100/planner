@@ -8,6 +8,9 @@ on:
         description: Publicar APK en una prerelease después de validar
         type: boolean
         default: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -22,6 +25,46 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - run: PYTHONPATH=backend pytest -q backend/tests
+      - run: node --test backend/webtests/account-link.test.cjs
+  postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: calenflex
+          POSTGRES_PASSWORD: ci-disposable-only
+          POSTGRES_DB: calenflex
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U calenflex -d calenflex"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - run: PYTHONPATH=backend pytest -q backend/integration
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg://calenflex:ci-disposable-only@localhost:5432/calenflex
+      - run: docker build -t calenflex-ci ./backend
+      - name: Verificar contenedor con PostgreSQL y cifrado de producción
+        run: >-
+          docker run --rm --network host --read-only --tmpfs /tmp:size=64m --cap-drop ALL
+          -e DATABASE_URL=postgresql+psycopg://calenflex:ci-disposable-only@localhost:5432/calenflex
+          -e CALENFLEX_TOKEN=ci-disposable-only calenflex-ci
+          python -c "import os; from cryptography.fernet import Fernet; os.environ['CALENFLEX_ENV']='production'; os.environ['CALENFLEX_DATA_KEY']=Fernet.generate_key().decode(); from fastapi.testclient import TestClient; from app.main import app; assert TestClient(app).get('/ready').status_code == 200"
+  optimizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt -r backend/requirements-optimization.txt
+      - run: PYTHONPATH=backend pytest -q backend/experiments/test_equivalence.py
+      - run: PYTHONPATH=backend python backend/experiments/compare_equivalent.py
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -67,16 +110,18 @@ jobs:
           script: |
             adb shell input keyevent 82
             ./gradlew --stacktrace connectedDebugAndroidTest
+            adb pull /sdcard/Pictures/CalenflexTests app/build/reports/screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Android-device-reports
           path: |
             android/app/build/reports/androidTests/
+            android/app/build/reports/screenshots/
             android/app/build/outputs/androidTest-results/
   release:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish)
-    needs: [backend, android, android-device]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/consolidation/'))) || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: [backend, postgres, optimizer, android, android-device]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -84,10 +129,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: CalenFleX-debug
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android-device-reports
+          path: device-reports
       - name: Publicar APK validado
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           mv app-debug.apk CalenFleX-debug.apk
-          gh release create "android-${GITHUB_SHA:0:7}" CalenFleX-debug.apk --target "$GITHUB_SHA" --prerelease --title "CalenFleX Android" --notes "APK de depuración. Backend, compilación, lint, pruebas JVM y tests instrumentados aprobados en esta ejecución. Requiere servidor HTTPS para planificación, sincronización e IA. Consultar README y docs/VALIDATION.md para configuración y límites."
+          gh release create "android-${GITHUB_SHA:0:7}" CalenFleX-debug.apk device-reports/reports/screenshots/agenda-month.png device-reports/reports/screenshots/agenda-day.png --target "$GITHUB_SHA" --prerelease --title "CalenFleX Android" --notes "APK de depuración. Backend, PostgreSQL, comparación experimental, compilación, lint, pruebas JVM y tests instrumentados aprobados en esta ejecución. Requiere servidor HTTPS para planificación, sincronización e IA. Consultar README y docs/TESTING.md para configuración y límites."

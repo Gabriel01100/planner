@@ -118,7 +118,10 @@ class AgendaService:
 
     def propose(self, owner, start, days=7):
         revision, state = self.read(owner)
-        result = stable_plan(PlanRequest(state=state, start=start, days=days))
+        try:
+            result = stable_plan(PlanRequest(state=state, start=start, days=days))
+        except ValueError as error:
+            raise HTTPException(422, str(error))
         proposal_id = uuid4()
         expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         with Session(self.engine) as db:

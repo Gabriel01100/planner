@@ -152,3 +152,57 @@ def test_expired_unique_has_pending_reason():
     result = run(State(activities=[a]))
     assert not result.schedule
     assert 'Fecha límite' in result.pending[0].reason
+
+
+def test_unique_validator_rejects_disallowed_weekday_and_skip():
+    a = activity(days=[1], deadline=START + timedelta(days=2))
+    invalid = Slot(activityId=a.id, date=START, start=540, end=600)
+    assert any('días permitidos' in e for e in validate(State(activities=[a]), [invalid]))
+    result = run(State(activities=[a]), 3)
+    assert result.schedule[0].date.weekday() == 1
+    assert not result.conflicts
+    skipped = a.model_copy(update={'skippedDates': [START + timedelta(days=1)]})
+    assert validate(State(activities=[skipped]), result.schedule)
+
+
+def test_completed_collision_checked_independent_of_list_order():
+    a, b = activity(), activity()
+    active = Slot(activityId=a.id, date=START, start=540, end=600)
+    history = Slot(activityId=b.id, date=START, start=550, end=610, completed=True)
+    state = State(activities=[a, b])
+    assert validate(state, [history, active]) == validate(state, [active, history])
+    assert any('Superposición' in e for e in validate(state, [active, history]))
+
+
+def test_dependencies_and_daily_load_are_shared_rules():
+    first = activity(priority=4, duration=30)
+    second = activity(priority=1, duration=30, dependencies=[first.id])
+    state = State(activities=[second, first], preferences=Preferences(maxDailyMinutes=60))
+    result = run(state, 1)
+    assert len(result.schedule) == 2 and not result.conflicts
+    before = next(s for s in result.schedule if s.activityId == first.id)
+    after = next(s for s in result.schedule if s.activityId == second.id)
+    assert before.end <= after.start
+    overloaded = state.model_copy(update={'preferences': Preferences(maxDailyMinutes=30)})
+    assert len(run(overloaded, 1).schedule) == 1
+    assert validate(overloaded, result.schedule)
+    assert validate(state, [after])
+
+
+def test_dst_missing_wall_times_and_elapsed_duration():
+    day = date(2027, 3, 14)
+    a = activity(startDate=day, duration=60, fixedStart=150, windows=[Window(start=0, end=1440)])
+    state = State(activities=[a], availability=[Window(start=0, end=1440)], preferences=Preferences(timezone='America/New_York'))
+    result = plan(PlanRequest(state=state, start=day, days=1, now=NOW))
+    assert not result.schedule and result.pending
+    assert validate(state, [Slot(activityId=a.id, date=day, start=150, end=210)])
+
+
+def test_monthly_weekday_restriction_and_cancelled_existing_slot():
+    a = activity(frequency='Mensual', days=[1])
+    assert not run(State(activities=[a])).schedule
+    assert validate(State(activities=[a]), [Slot(activityId=a.id, date=START, start=540, end=600)])
+    cancelled = activity(status='Cancelada')
+    slot = Slot(activityId=cancelled.id, date=START, start=540, end=600)
+    assert validate(State(activities=[cancelled]), [slot])
+    assert not run(State(activities=[cancelled], schedule=[slot])).schedule

@@ -5,7 +5,7 @@ from .learning import LearningService
 from .learning_models import ResourceRegistration
 from .behavior import insights, InsightsResult
 from .learning_models import (Contract, LearningGoal, LearningMilestone, StudySession, SessionRegistration,
-                              LearningMemory, MemoryEnvelope, MutationResult, GoalDetails)
+                              LearningMemory, MemoryEnvelope, MutationResult, GoalDetails, LearningPreferences)
 
 class MemoryCorrection(Contract):
     revision: int = Field(ge=0)
@@ -17,18 +17,35 @@ class Confirmation(Contract):
     confirmed: StrictBool
 
 
+class PreferencesUpdate(Contract):
+    revision: int = Field(ge=0)
+    preferences: LearningPreferences
+    confirmed: StrictBool
+
 def learning_router(service: LearningService, access):
     router = APIRouter(prefix='/api/v1', tags=['Aprendizaje'])
     read = access.owner_dependency('memory:read')
     write = access.owner_dependency('memory:write')
+
+    @router.put('/learning/preferences', response_model=MutationResult)
+    def preferences(command: PreferencesUpdate, owner=Depends(access.owner_dependency('preferences:write'))):
+        from fastapi import HTTPException
+        from uuid import uuid4
+        if not command.confirmed: raise HTTPException(422, 'Confirmá las reglas de autonomía')
+        def change(memory):
+            memory.preferences = command.preferences
+            return uuid4(), False
+        return service.mutate(owner, 'preferences.update', change, expected=command.revision)
 
     @router.get('/learning', response_model=MemoryEnvelope)
     def memory(owner=Depends(read)):
         return service.read(owner)
 
     @router.put('/learning', response_model=MutationResult)
-    def correct(command: MemoryCorrection, owner=Depends(write)):
-        return service.replace(owner, command.memory, command.revision, command.confirmed)
+    def correct(command: MemoryCorrection, principal=Depends(access.principal_dependency('memory:write'))):
+        if command.memory.preferences != service.read(principal.owner).memory.preferences:
+            access.check(principal, 'preferences:write')
+        return service.replace(principal.owner, command.memory, command.revision, command.confirmed)
 
     @router.post('/learning/goals', response_model=MutationResult)
     def create_goal(goal: LearningGoal, owner=Depends(write)):
