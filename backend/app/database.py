@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, create_engine, inspect, select
 from sqlalchemy.orm import DeclarativeBase, Session
+from .encryption import ProtectedText, cipher, seal, unseal, PREFIX
 
 class Base(DeclarativeBase):
     pass
@@ -10,13 +11,13 @@ class Document(Base):
     __tablename__ = 'documents'
     owner = Column(String(64), primary_key=True)
     revision = Column(Integer, nullable=False, default=0)
-    payload = Column(Text, nullable=False)
+    payload = Column(ProtectedText(), nullable=False)
 
 class LearningDocument(Base):
     __tablename__ = 'learning_documents'
     owner = Column(String(64), primary_key=True)
     revision = Column(Integer, nullable=False, default=0)
-    payload = Column(Text, nullable=False)
+    payload = Column(ProtectedText(), nullable=False)
 
 class Credential(Base):
     __tablename__ = 'credentials'
@@ -39,6 +40,17 @@ class AuditEntry(Base):
     # No imported text, private notes, URLs, prompts or credentials in audit metadata.
     entity_id = Column(String(100), nullable=True)
 
+class StoredProposal(Base):
+    __tablename__ = 'plan_proposals'
+    id = Column(String(36), primary_key=True)
+    owner = Column(String(64), nullable=False, index=True)
+    base_revision = Column(Integer, nullable=False)
+    payload = Column(ProtectedText(), nullable=False)
+    previous = Column(ProtectedText(), nullable=False)
+    expires_at = Column(String(40), nullable=False)
+    applied_revision = Column(Integer, nullable=True)
+    status = Column(String(20), nullable=False, default='pending')
+
 class SchemaVersion(Base):
     __tablename__ = 'schema_versions'
     version = Column(Integer, primary_key=True)
@@ -55,15 +67,37 @@ def migrate(engine):
     if inspector.has_table('schema_versions'):
         with Session(engine) as db:
             versions = db.scalars(select(SchemaVersion.version)).all()
-            if versions and max(versions) > 2:
+            if versions and max(versions) > 4:
                 raise RuntimeError('Esta base pertenece a una versión más nueva')
     with engine.begin() as connection:
+        if engine.dialect.name == 'sqlite':
+            connection.exec_driver_sql('BEGIN IMMEDIATE')
+        elif engine.dialect.name == 'postgresql':
+            connection.exec_driver_sql('SELECT pg_advisory_xact_lock(70420113)')
         Base.metadata.create_all(connection)
-    with Session(engine) as db:
-        for version in (1, 2):
-            if db.get(SchemaVersion, version) is None:
-                db.add(SchemaVersion(version=version, applied_at=datetime.now(timezone.utc).isoformat()))
-        db.commit()
+        protector = cipher()
+        # Validate every existing envelope first, then rewrite legacy plaintext in the same transaction.
+        from sqlalchemy import text
+        transforms = []
+        for table, key, columns in [('documents', 'owner', ['payload']), ('learning_documents', 'owner', ['payload']), ('plan_proposals', 'id', ['payload', 'previous'])]:
+            for row in connection.exec_driver_sql(f"SELECT {key}, {', '.join(columns)} FROM {table}").mappings():
+                updates = {}
+                for column in columns:
+                    value = row[column]
+                    unseal(value)
+                    if protector and not value.startswith(PREFIX):
+                        updates[column] = seal(value)
+                if updates:
+                    transforms.append((table, key, row[key], updates))
+        for table, key, identity, values in transforms:
+            assignments = ', '.join(f'{column} = :{column}' for column in values)
+            connection.execute(text(f'UPDATE {table} SET {assignments} WHERE {key} = :identity'), dict(values, identity=identity))
+        existing = set(connection.execute(select(SchemaVersion.version)).scalars())
+        for version in (1, 2, 3, 4):
+            if version not in existing:
+                connection.execute(SchemaVersion.__table__.insert().values(
+                    version=version, applied_at=datetime.now(timezone.utc).isoformat()))
+
 
 
 def make_engine(url):

@@ -53,7 +53,7 @@ def test_registration_updates_memory_without_inventing_mastery(api):
     assert client.get('/api/v1/learning/next-steps').json()['items'][0]['description'] == 'Practicar recursión'
     with Session(app.state.engine) as db:
         log = db.scalars(select(AuditEntry)).all()
-        assert [r.action for r in log] == ['goal.create', 'progress.register']
+        assert [r.action for r in log if r.action.startswith(('goal.', 'progress.'))] == ['goal.create', 'progress.register']
         assert not hasattr(log[-1], 'notes')
 
 
@@ -203,8 +203,67 @@ def test_legacy_migration_preserves_exact_payload_and_revision(tmp_path):
     with Session(engine) as db:
         assert db.get(Document, 'personal').revision == 17
         assert db.get(Document, 'personal').payload == original
-        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2]
+        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2, 3, 4]
     with engine.begin() as c:
         c.execute(text("INSERT INTO schema_versions VALUES (99, 'future')"))
     with pytest.raises(RuntimeError, match='más nueva'):
         migrate(engine)
+
+
+def test_reimported_source_digest_does_not_duplicate_session_even_if_recording_time_changes(api):
+    client, *_ = api
+    id = goal(client)
+    body = command(id, sourceContentDigest='a' * 64, sourceType='text')
+    first = client.post('/api/v1/learning/progress', json=body).json()
+    body['requestId'] = str(uuid4())
+    body['completedAt'] = '2026-11-23T14:05:00Z'
+    second = client.post('/api/v1/learning/progress', json=body).json()
+    assert second['duplicate'] and second['entityId'] == first['entityId']
+    assert len(client.get('/api/v1/learning').json()['memory']['sessions']) == 1
+
+
+def test_resource_is_deduplicated_without_inventing_study_or_mastery(api):
+    client, *_ = api
+    id = goal(client)
+    body = {'requestId': str(uuid4()), 'goalId': id, 'title': 'Apunte', 'summary': 'Funciones para revisar', 'sourceType': 'pdf', 'contentDigest': 'b' * 64, 'confirmed': True}
+    first = client.post('/api/v1/learning/resources', json=body)
+    assert first.status_code == 200
+    assert client.post('/api/v1/learning/resources', json=body).json()['duplicate']
+    memory = client.get('/api/v1/learning').json()
+    assert len(memory['memory']['sources']) == 1
+    assert not memory['memory']['sessions'] and not memory['memory']['competencies']
+    assert client.post(f'/api/v1/learning/goals/{id}/delete', json={'revision': memory['revision'], 'confirmed': True}).status_code == 200
+    assert client.get('/api/v1/learning').json()['memory']['sources'] == []
+
+
+def test_long_dependency_chain_is_validated_without_python_recursion_limit():
+    goal = LearningGoal(title='Plan extenso')
+    steps = []
+    for index in range(1100):
+        steps.append(NextStep(goalId=goal.id, description=f'Paso {index}', dependencies=[steps[-1].id] if steps else []))
+    assert len(LearningMemory(goals=[goal], nextSteps=steps).nextSteps) == 1100
+
+
+def test_legacy_android_write_preserves_new_goal_association(api):
+    client, app, *_ = api
+    from app.models import Activity
+    from datetime import date
+    goal_id = goal(client)
+    task = Activity(title='Sesión asociada', startDate=date(2027, 1, 1), goalId=goal_id)
+    app.state.agenda.create_task('alice', task)
+    envelope = client.get('/api/sync').json()
+    del envelope['state']['activities'][0]['goalId']  # Android v1 does not know the new field
+    envelope['state']['activities'][0]['title'] = 'Editada desde Android anterior'
+    result = client.put('/api/sync', json=envelope)
+    assert result.status_code == 200
+    assert result.json()['state']['activities'][0]['goalId'] == goal_id
+
+
+def test_subject_and_difficulties_remain_structured_facts(api):
+    client, *_ = api
+    id = goal(client)
+    assert client.post('/api/v1/learning/progress', json=command(id, subject='Programación', subtopics=['Parámetros'], exercises=['Ejercicio 1'], evaluation='Revisado por el usuario')).status_code == 200
+    memory = client.get('/api/v1/learning').json()['memory']
+    assert memory['topics'][0]['subject'] == 'Programación'
+    assert memory['events'][0]['exercises'] == ['Ejercicio 1']
+    assert memory['events'][0]['evaluation'] == 'Revisado por el usuario'

@@ -21,6 +21,9 @@ from .database import Document, make_engine, migrate
 from .security import Access
 from .learning import LearningService
 from .learning_api import learning_router
+from .agenda import AgendaService
+from .agent import agent_router
+from .planning_api import planning_router
 
 def create_app(database_url=None, token=None):
     engine = make_engine(database_url or os.getenv('DATABASE_URL', 'sqlite:///./calenflex.db'))
@@ -29,12 +32,18 @@ def create_app(database_url=None, token=None):
     calls = defaultdict(deque)
     lock = threading.Lock()
 
+    mcp_server = None
+
     @asynccontextmanager
     async def lifespan(app):
-        yield
+        if mcp_server is not None:
+            async with mcp_server.session_manager.run():
+                yield
+        else:
+            yield
         engine.dispose()
 
-    app = FastAPI(title='CalenFleX', version='1.0.0', lifespan=lifespan)
+    app = FastAPI(title='CalenFleX', version='1.1.0', lifespan=lifespan)
 
     @app.middleware('http')
     async def body_limit(request: Request, call_next):
@@ -54,7 +63,10 @@ def create_app(database_url=None, token=None):
     app.state.access = access
     app.state.learning = service
     app.state.engine = engine
+    app.state.agenda = AgendaService(engine)
     app.include_router(learning_router(service, access))
+    app.include_router(agent_router(service, access))
+    app.include_router(planning_router(app.state.agenda, access))
 
     @app.get('/health')
     def health():
@@ -90,6 +102,12 @@ def create_app(database_url=None, token=None):
             revision = doc.revision if doc else 0
             if revision != req.revision:
                 raise HTTPException(409, 'Hay cambios remotos. Exportá una copia y elegí qué versión conservar.')
+            if doc:
+                previous = State.model_validate_json(doc.payload)
+                old_by_id = {activity.id: activity for activity in previous.activities}
+                for activity in req.state.activities:
+                    if 'goalId' not in activity.model_fields_set and activity.id in old_by_id:
+                        activity.goalId = old_by_id[activity.id].goalId
             payload = req.state.model_dump_json()
             if doc is None:
                 db.add(Document(owner=owner, revision=1, payload=payload))
@@ -114,19 +132,31 @@ def create_app(database_url=None, token=None):
         key = os.getenv('AI_API_KEY', '')
         if not key:
             raise HTTPException(503, 'La IA no está configurada. El resto de CalenFleX sigue disponible.')
-        with lock:
-            recent = calls[owner]
-            now = time.monotonic()
-            while recent and recent[0] < now - 3600:
-                recent.popleft()
-            if len(recent) >= int(os.getenv('AI_REQUESTS_PER_HOUR', '20')):
-                raise HTTPException(429, 'Límite horario de IA alcanzado')
-            recent.append(now)
+        access.consume_ai(owner)
         try:
             provider = OpenAICompatibleProvider(key, os.getenv('AI_BASE_URL', 'https://api.openai.com/v1'), os.getenv('AI_MODEL', 'gpt-4.1-mini'))
             return await provider.complete(req)
         except (httpx.HTTPError, ValueError, KeyError, IndexError):
             raise HTTPException(502, 'El proveedor de IA no respondió con datos válidos. Intentá nuevamente.')
+
+    issuer = os.getenv('OAUTH_ISSUER', '').rstrip('/')
+    resource = os.getenv('OAUTH_RESOURCE_URL', '').rstrip('/')
+    jwks = os.getenv('OAUTH_JWKS_URL', '')
+    if issuer and resource and jwks:
+        if not all(value.startswith('https://') for value in [issuer, resource, jwks]):
+            raise RuntimeError('OAuth y MCP requieren URLs HTTPS reales')
+        from .mcp_server import create_mcp
+        mcp_server = create_mcp(access, service, app.state.agenda, resource, issuer)
+        @app.get('/.well-known/oauth-protected-resource/mcp', include_in_schema=False)
+        def oauth_metadata():
+            from .security import SCOPES
+            return {'resource': resource, 'authorization_servers': [issuer],
+                    'scopes_supported': sorted(SCOPES), 'bearer_methods_supported': ['header']}
+        app.mount('/', mcp_server.streamable_http_app())
+    else:
+        @app.api_route('/mcp', methods=['GET', 'POST', 'DELETE'], include_in_schema=False)
+        def unconfigured_mcp():
+            raise HTTPException(503, 'MCP requiere configurar OAuth, un servidor HTTPS y su audiencia')
 
     return app
 

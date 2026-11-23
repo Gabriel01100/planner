@@ -2,6 +2,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import Field, StrictBool
 from .learning import LearningService
+from .learning_models import ResourceRegistration
+from .behavior import insights, InsightsResult
 from .learning_models import (Contract, LearningGoal, LearningMilestone, StudySession, SessionRegistration,
                               LearningMemory, MemoryEnvelope, MutationResult, GoalDetails)
 
@@ -52,9 +54,17 @@ def learning_router(service: LearningService, access):
     def register_progress(command: SessionRegistration, owner=Depends(write)):
         return service.register_progress(owner, command)
 
+    @router.post('/learning/resources', response_model=MutationResult)
+    def resource(command: ResourceRegistration, owner=Depends(write)):
+        return service.register_resource(owner, command)
+
     @router.get('/learning/next-steps')
     def next_steps(goal_id: UUID | None = None, owner=Depends(read)):
         return {'items': service.recommended(owner, goal_id)}
+
+    @router.get('/learning/insights', response_model=InsightsResult)
+    def behavior_insights(owner=Depends(read)):
+        return insights(service.read(owner).memory)
 
     @router.post('/connections/revoke')
     def revoke(principal=Depends(access.principal_dependency('memory:read'))):

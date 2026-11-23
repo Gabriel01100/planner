@@ -23,6 +23,6 @@ class OpenAICompatibleProvider:
                     'model': self.model, 'max_tokens': 2000,
                     'response_format': {'type': 'json_object'},
                     'messages': [{'role': 'system', 'content': system},
-                                 {'role': 'user', 'content': json.dumps({'message': req.message, 'context': req.state.model_dump(mode='json')}, ensure_ascii=False)}]})
+                                 {'role': 'user', 'content': json.dumps({'message': req.message, 'context': {'activities': [{'id': str(a.id), 'title': a.title, 'duration': a.duration, 'priority': a.priority, 'startDate': a.startDate.isoformat(), 'deadline': a.deadline.isoformat() if a.deadline else None, 'status': a.status} for a in req.state.activities[:50]], 'availability': [w.model_dump() for w in req.state.availability], 'timezone': req.state.preferences.timezone}}, ensure_ascii=False)}]})
             response.raise_for_status()
             return AIResponse.model_validate_json(response.json()['choices'][0]['message']['content'])

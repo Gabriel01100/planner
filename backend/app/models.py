@@ -16,6 +16,7 @@ class Window(BaseModel):
         return self
 
 class Activity(BaseModel):
+    goalId: UUID | None = None
     id: UUID = Field(default_factory=uuid4)
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(default='', max_length=4000)

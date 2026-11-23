@@ -9,7 +9,9 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from fastapi import Header, HTTPException
 from sqlalchemy.orm import Session
-from .database import Credential, RevokedToken
+from .database import Credential, RevokedToken, AuditEntry
+from uuid import uuid4
+from datetime import datetime, timezone
 
 SCOPES = {'memory:read', 'memory:write', 'schedule:read', 'schedule:write', 'schedule:approve', 'preferences:write'}
 
@@ -26,6 +28,7 @@ class Access:
     def __init__(self, engine, legacy_token=''):
         self.engine, self.legacy_token = engine, legacy_token
         self.calls = defaultdict(deque)
+        self.ai_calls = defaultdict(deque)
         self.lock = threading.Lock()
         self.jwt_client = None
 
@@ -90,6 +93,23 @@ class Access:
                     if not self.calls[old] or self.calls[old][-1] <= now - 60:
                         del self.calls[old]
 
+    def consume_ai(self, owner):
+        with self.lock:
+            now = time.monotonic()
+            recent = self.ai_calls[owner]
+            while recent and recent[0] <= now - 3600:
+                recent.popleft()
+            try:
+                limit = int(os.getenv('AI_REQUESTS_PER_HOUR', '20'))
+            except ValueError:
+                raise HTTPException(503, 'Revisá la configuración de cuota de IA del servidor')
+            if len(recent) >= max(0, limit):
+                raise HTTPException(429, 'Límite horario de IA alcanzado', headers={'Retry-After': '3600'})
+            recent.append(now)
+            for old in list(self.ai_calls):
+                if self.ai_calls[old] and self.ai_calls[old][-1] <= now - 3600:
+                    del self.ai_calls[old]
+
     def owner_dependency(self, scope):
         def dependency(authorization: str = Header(default='')):
             principal = self.authenticate(authorization)
@@ -109,6 +129,7 @@ class Access:
             raise ValueError('Usuario o permisos inválidos')
         token = secrets.token_urlsafe(48)
         with Session(self.engine) as db:
+            db.add(AuditEntry(id=str(uuid4()), owner=owner, action="connection.issue", at=datetime.now(timezone.utc).isoformat(), entity_id=digest(token)[:12]))
             db.add(Credential(digest=digest(token), owner=owner, scopes=' '.join(sorted(set(scopes))), label=label[:100], revoked=0))
             db.commit()
         return token
@@ -120,4 +141,5 @@ class Access:
             credential = db.get(Credential, principal.token_digest)
             if credential:
                 credential.revoked = 1
+            db.add(AuditEntry(id=str(uuid4()), owner=principal.owner, action="connection.revoke", at=datetime.now(timezone.utc).isoformat(), entity_id=principal.token_digest[:12]))
             db.commit()

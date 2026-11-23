@@ -28,6 +28,7 @@ class LearningMilestone(Contract):
     completedAt: AwareDatetime | None = None
 
 class Topic(Contract):
+    subject: str = Field(default='', max_length=200)
     id: UUID = Field(default_factory=uuid4)
     goalId: UUID
     title: str = Field(min_length=1, max_length=200)
@@ -125,6 +126,7 @@ class LearningPreferences(Contract):
     # Fully autonomous mode intentionally does not exist in this release.
 
 class Receipt(Contract):
+    goalId: UUID | None = None
     requestId: UUID
     fingerprint: str = Field(pattern=r'^[0-9a-f]{64}$')
     entityId: UUID
@@ -177,18 +179,26 @@ class LearningMemory(Contract):
         for competency in self.competencies:
             if competency.topicId not in topics or any(e not in events or events[e].topicId != competency.topicId or events[e].evidenceType != 'confirmed' for e in competency.evidenceIds):
                 raise ValueError('Evidencia de competencia inválida')
+        from collections import deque
+        counts = {step.id: len(set(step.dependencies)) for step in self.nextSteps}
+        dependents = {step.id: [] for step in self.nextSteps}
         for step in self.nextSteps:
-            seen = {step.id}
-            def visit(id):
-                if id in seen or id not in steps or steps[id].goalId != step.goalId:
-                    raise ValueError('Dependencias inválidas o cíclicas')
-                seen.add(id)
-                for dependency in steps[id].dependencies:
-                    visit(dependency)
-                seen.remove(id)
-            for dependency in step.dependencies:
-                visit(dependency)
-        if len({r.requestId for r in self.receipts}) != len(self.receipts) or any(r.entityId not in sessions for r in self.receipts):
+            for dependency in set(step.dependencies):
+                if dependency not in steps or steps[dependency].goalId != step.goalId:
+                    raise ValueError('Dependencia inexistente o de otro objetivo')
+                dependents[dependency].append(step.id)
+        ready = deque(id for id, count in counts.items() if count == 0)
+        visited = 0
+        while ready:
+            id = ready.popleft()
+            visited += 1
+            for dependent in dependents[id]:
+                counts[dependent] -= 1
+                if counts[dependent] == 0:
+                    ready.append(dependent)
+        if visited != len(steps):
+            raise ValueError('Dependencias cíclicas')
+        if len({r.requestId for r in self.receipts}) != len(self.receipts) or any((r.entityId not in sessions and r.entityId not in sources) or (r.goalId is not None and r.goalId not in goals) for r in self.receipts):
             raise ValueError('Recibos de idempotencia inválidos')
         return self
 
@@ -221,6 +231,7 @@ class SessionRegistration(Contract):
     sourceTitle: str = Field(default='', max_length=200)
     sourceUrl: str | None = Field(default=None, max_length=2000)
     externalReference: str | None = Field(default=None, max_length=200)
+    sourceContentDigest: str | None = Field(default=None, pattern=r'^[0-9a-f]{64}$')
     confirmed: StrictBool
 
     @model_validator(mode='after')
@@ -251,3 +262,21 @@ class GoalDetails(Contract):
     topics: list[Topic]
     nextSteps: list[NextStep]
     events: list[ProgressEvent]
+
+class ResourceRegistration(Contract):
+    requestId: UUID
+    goalId: UUID
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = Field(default='', max_length=2000)
+    sourceType: Literal['chatgpt', 'notebooklm', 'text', 'pdf', 'link', 'manual'] = 'text'
+    sourceUrl: str | None = Field(default=None, max_length=2000)
+    contentDigest: str | None = Field(default=None, pattern=r'^[0-9a-f]{64}$')
+    confirmed: StrictBool
+
+    @model_validator(mode='after')
+    def checked(self):
+        if not self.confirmed:
+            raise ValueError('Confirmá la referencia antes de guardarla')
+        if self.sourceUrl and not self.sourceUrl.startswith(('https://', 'http://')):
+            raise ValueError('La referencia debe ser HTTP(S)')
+        return self

@@ -9,3 +9,9 @@ Las entidades educativas se validan juntas en un agregado acotado: permite verif
 Las migraciones de esquema son aditivas, versionadas e idempotentes; se prueba la adopción de la base original sin cambiar su contenido ni revisión. PostgreSQL se evalúa como motor de producción usando el mismo contrato SQLAlchemy; no se afirma validado sin ejecutarlo.
 
 La conexión histórica CALENFLEX_TOKEN sigue apuntando a personal. Nuevos tokens y sujetos OAuth no pueden elegir owner en el cuerpo de las solicitudes. Tokens nuevos se almacenan solo por hash y pueden revocarse. No se implementa un servidor de contraseñas ni un OAuth casero: se integra un proveedor OAuth/OIDC externo con verificación de emisor, audiencia, expiración y scopes.
+
+## Cifrado y versiones posteriores
+
+La revisión SQL 3 agrega propuestas de planificación con control de versión y reversión. La revisión 4 incorpora sobres cifrados autenticados para agenda, memoria y propuestas cuando se configura CALENFLEX_DATA_KEY. La conversión de registros anteriores es transaccional y conserva revisión y contenido. Una clave ausente o incorrecta no produce una base vacía ni descarta datos: el servidor se niega a abrir sobres que no puede verificar.
+
+En producción se exige la clave; en desarrollo puede omitirse para pruebas locales y entonces los datos se guardan en texto claro. No confundir ese modo con protección para un despliegue público. La clave debe respaldarse junto con la base, por un canal separado. Android usa almacenamiento privado protegido por el cifrado del dispositivo y Keystore para credenciales; no se afirma que Room use SQLCipher.
