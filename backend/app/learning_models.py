@@ -57,6 +57,7 @@ class StudySession(Contract):
     goalId: UUID
     topicId: UUID | None = None
     activityId: UUID | None = None
+    occurrenceDate: date | None = None
     startedAt: AwareDatetime | None = None
     completedAt: AwareDatetime | None = None
     plannedMinutes: int | None = Field(default=None, ge=1, le=1440)
@@ -66,6 +67,8 @@ class StudySession(Contract):
 
     @model_validator(mode='after')
     def timing(self):
+        if self.occurrenceDate and not self.activityId:
+            raise ValueError('La ocurrencia requiere una actividad')
         if self.startedAt and self.completedAt and self.completedAt < self.startedAt:
             raise ValueError('El fin de sesión es anterior al inicio')
         if self.status == 'completed' and self.completedAt is None:
@@ -230,6 +233,7 @@ class SessionRegistration(Contract):
     notes: str = Field(default='', max_length=4000)
     sessionId: UUID | None = None
     activityId: UUID | None = None
+    occurrenceDate: date | None = None
     startedAt: AwareDatetime | None = None
     completedAt: AwareDatetime
     plannedMinutes: int | None = Field(default=None, ge=1, le=1440)
@@ -252,6 +256,8 @@ class SessionRegistration(Contract):
 
     @model_validator(mode='after')
     def explicitly_confirmed(self):
+        if self.occurrenceDate and not self.activityId:
+            raise ValueError('La ocurrencia requiere una actividad')
         if self.sourceUrl and not self.sourceUrl.startswith(('https://', 'http://')):
             raise ValueError('Solo se admiten referencias HTTP(S)')
         if not self.confirmed:

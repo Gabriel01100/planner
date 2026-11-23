@@ -116,7 +116,7 @@ private val teal = Color(0xFF006C63)
             floatingActionButton = { if (entry?.destination?.route in listOf("Hoy", "Agenda", "Actividades")) FloatingActionButton(onClick = { editing = Activity(startDate = today(state.preferences.timezone).toString()) }) { Icon(Icons.Outlined.Add, "Crear actividad") } }
         ) { padding ->
             NavHost(navController = nav, startDestination = "Hoy", modifier = Modifier.padding(padding)) {
-                composable("Hoy") { TodayScreen(state, learning, { a -> vm.task { vm.learningRepository.begin(a.id) } }, { finishingActive = true; progressEditor = true; selectedGoal = state.activities.find { it.id == learning.active?.activityId }?.goalId?.takeIf { id -> learning.goals().any { it.id == id } }; proposalDraft = null }, { vm.generate() }, { detail = it }, { vm.task { vm.learningRepository.clearActive() } }) }
+                composable("Hoy") { TodayScreen(state, learning, { a, date -> vm.task { vm.learningRepository.begin(a.id, date) } }, { finishingActive = true; progressEditor = true; selectedGoal = state.activities.find { it.id == learning.active?.activityId }?.goalId?.takeIf { id -> learning.goals().any { it.id == id } }; proposalDraft = null }, { vm.generate() }, { detail = it }, { vm.task { vm.learningRepository.clearActive() } }) }
                 composable("Agenda") { Column {
                     Row { TextButton(onClick = { nav.navigate("Actividades") }) { Text("Actividades") }; TextButton(onClick = { nav.navigate("Calendario") }) { Text("Calendario") } }
                     CalendarScreen(state, { detail = it }, { a, d -> vm.complete(a, d) })
@@ -137,7 +137,7 @@ private val teal = Color(0xFF006C63)
             val active = if(finishingActive) learning.active else null
             val activity = active?.let { a -> state.activities.find { it.id == a.activityId } }
             val elapsed = active?.let { runCatching { java.time.Duration.between(java.time.Instant.parse(it.startedAt), java.time.Instant.now()).toMinutes().coerceIn(1, 1440).toInt() }.getOrNull() }
-            ProgressEditor(learning, selectedGoal, activity?.title.orEmpty(), elapsed, activity?.id, proposalDraft, startedAt = active?.startedAt, plannedMinutes = activity?.duration, timezone = state.preferences.timezone, completeWithoutStudy = if(activity == null) null else ({ vm.finishWithoutStudy(activity) { progressEditor = false } }), dismiss = { progressEditor = false }) { body ->
+            ProgressEditor(learning, selectedGoal, activity?.title.orEmpty(), elapsed, activity?.id, proposalDraft, startedAt = active?.startedAt, occurrenceDate = active?.occurrenceDate, plannedMinutes = activity?.duration, timezone = state.preferences.timezone, completeWithoutStudy = if(activity == null) null else ({ vm.finishWithoutStudy(activity) { progressEditor = false } }), dismiss = { progressEditor = false }) { body ->
                 vm.recordProgress(body, activity) { progressEditor = false }
             }
         }

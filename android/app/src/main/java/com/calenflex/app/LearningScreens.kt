@@ -14,7 +14,7 @@ import java.util.UUID
 
 fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(goals.count { it.title == goal.title } <= 1) goal.title else "${goal.title} · ${goal.description.ifBlank { goal.category }.take(35)} · ${goals.indexOf(goal) + 1}"
 
-@Composable fun TodayScreen(state: State, learning: LearningSnapshot, begin: (Activity) -> Unit, finish: () -> Unit, generate: () -> Unit, detail: (Activity) -> Unit, cancelActive: () -> Unit) {
+@Composable fun TodayScreen(state: State, learning: LearningSnapshot, begin: (Activity, String) -> Unit, finish: () -> Unit, generate: () -> Unit, detail: (Activity) -> Unit, cancelActive: () -> Unit) {
     val day = today(state.preferences.timezone).toString()
     val slots = state.schedule.filter { it.date == day && !it.completed }.sortedBy { it.start }
     val active = learning.active?.let { running -> state.activities.find { it.id == running.activityId } }
@@ -39,7 +39,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
                 Text(a.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("${clock(slot.start)} · ${a.duration} minutos · ${a.category}")
                 a.goalId?.let { id -> learning.goals().find { it.id == id }?.let { Text("Objetivo: ${it.title}") } }
-                Button(onClick = { begin(a) }) { Text("Comenzar") }
+                Button(onClick = { begin(a, slot.date) }) { Text("Comenzar") }
             } }
         } else Empty("Hoy tenés espacio para avanzar a tu ritmo. Agregá una actividad o revisá tu planificación.")
         if(slots.size > 1) Text("Después", style = MaterialTheme.typography.titleMedium)
@@ -104,7 +104,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
     }
 }
 
-@Composable fun ProgressEditor(snapshot: LearningSnapshot, initialGoal: String?, topicHint: String = "", minutesHint: Int? = null, activityId: String? = null, imported: JsonObject? = null, startedAt: String? = null, plannedMinutes: Int? = null, timezone: String = "America/Argentina/Buenos_Aires", completeWithoutStudy: (() -> Unit)? = null, dismiss: () -> Unit, save: (JsonObject) -> Unit) {
+@Composable fun ProgressEditor(snapshot: LearningSnapshot, initialGoal: String?, topicHint: String = "", minutesHint: Int? = null, activityId: String? = null, imported: JsonObject? = null, startedAt: String? = null, occurrenceDate: String? = null, plannedMinutes: Int? = null, timezone: String = "America/Argentina/Buenos_Aires", completeWithoutStudy: (() -> Unit)? = null, dismiss: () -> Unit, save: (JsonObject) -> Unit) {
     var selected by remember { mutableStateOf(initialGoal) }
     var topic by remember { mutableStateOf(imported?.text("topic")?.takeIf { it.isNotBlank() } ?: topicHint) }
     var actual by remember { mutableStateOf(imported?.number("actualMinutes")?.toString() ?: minutesHint?.toString().orEmpty()) }
@@ -124,6 +124,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
     var notes by remember { mutableStateOf(imported?.text("summary").orEmpty()) }
     var next by remember { mutableStateOf(imported?.text("recommendedNextTopic").orEmpty()) }
     var completedDate by remember { mutableStateOf(today(timezone).toString()) }
+    val completedTime = remember { java.time.LocalTime.now(java.time.ZoneId.of(timezone)) }
     var error by remember { mutableStateOf("") }
     val requestId = remember { UUID.randomUUID().toString() }
     FullDialog("Registrar lo que trabajaste", dismiss) {
@@ -131,6 +132,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
         Text("Guardamos tu registro, sin asumir que ya dominás el tema. Revisá los datos antes de confirmar.")
         if(snapshot.goals().isEmpty()) Empty("Primero creá un objetivo para asociar la sesión.")
         snapshot.goals().forEach { goal -> FilterChip(selected = selected == goal.id, onClick = { selected = goal.id }, label = { Text(goalLabel(goal, snapshot.goals())) }) }
+        occurrenceDate?.let { Text("Ocurrencia seleccionada: $it") }
         Field("Fecha de la sesión (AAAA-MM-DD)", completedDate) { completedDate = it }
         Field("Tema trabajado", topic) { topic = it }
         Field("Duración real en minutos (opcional)", actual) { actual = it }
@@ -161,12 +163,13 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
             val minutes = actual.takeIf { it.isNotBlank() }?.toInt(); require(minutes == null || minutes in 1..1440)
             save(buildJsonObject {
                 put("requestId", requestId); put("goalId", selected!!); put("topic", topic.trim())
-                put("completedAt", java.time.LocalDate.parse(completedDate).atTime(java.time.LocalTime.now(java.time.ZoneId.of(timezone))).atZone(java.time.ZoneId.of(timezone)).toInstant().toString()); put("actualMinutes", minutes?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("completedAt", java.time.LocalDate.parse(completedDate).atTime(completedTime).atZone(java.time.ZoneId.of(timezone)).toInstant().toString()); put("actualMinutes", minutes?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("notes", notes); put("confirmed", true); put("sourceType", if(imported == null) "manual" else imported.text("_sourceType").ifBlank { "text" })
                 put("understood", JsonArray(understood.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))
                 put("needsReinforcement", JsonArray(reinforce.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))
                 if(activityId != null) put("activityId", activityId)
                 if(startedAt != null) put("startedAt", startedAt)
+                if(occurrenceDate != null) put("occurrenceDate", occurrenceDate)
                 if(plannedMinutes != null) put("plannedMinutes", plannedMinutes)
                 if(assessed) {
                     val c = correct.toInt(); val t = total.toInt(); val f = confidence.toDouble()

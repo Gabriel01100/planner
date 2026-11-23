@@ -12,9 +12,10 @@ import kotlinx.serialization.encodeToString
 @Composable fun LearningBackup(vm: AppViewModel, snapshot: LearningSnapshot) {
     val context = LocalContext.current
     var imported by remember { mutableStateOf<String?>(null) }
+    var exportPrevious by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf("") }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if(uri != null) vm.task {
-        val payload = json.encodeToString(vm.learningRepository.current())
+        val payload = if(exportPrevious) vm.learningRepository.previousBackup() ?: error("No hay una copia anterior") else json.encodeToString(vm.learningRepository.current())
         withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { it.write(payload.toByteArray()) } ?: error("No se pudo abrir el archivo") }
         vm.message.value = "Copia de aprendizaje exportada con los registros pendientes"
     } }
@@ -27,16 +28,26 @@ import kotlinx.serialization.encodeToString
     } }
     Text("Copias de aprendizaje", style = MaterialTheme.typography.titleMedium)
     Text("Incluyen objetivos, sesiones y registros pendientes. La agenda se exporta por separado. Guardá ambas copias en un lugar privado.")
-    OutlinedButton(onClick = { export.launch("calenflex-aprendizaje-${today()}.json") }) { Text("Exportar aprendizaje") }
+    OutlinedButton(onClick = { exportPrevious = false; export.launch("calenflex-aprendizaje-${today()}.json") }) { Text("Exportar aprendizaje") }
     OutlinedButton(onClick = { read.launch(arrayOf("application/json", "text/plain")) }) { Text("Importar aprendizaje") }
-    if(snapshot.restorePending) {
+    Text("Al importar se protege la memoria local anterior hasta que decidas qué copia conservar.")
+    TextButton(onClick = { exportPrevious = true; export.launch("calenflex-aprendizaje-anterior-${today()}.json") }) { Text("Exportar copia local protegida") }
+    TextButton(onClick = { confirmation = "previous" }) { Text("Recuperar la copia local anterior") }
+    TextButton(onClick = { confirmation = "discard" }) { Text("Descartar la copia protegida después de resolver el conflicto") }
+    if(snapshot.restorePending || snapshot.recoveryBase != null) {
         Text("La copia se puede consultar localmente. Para sincronizar, elegí cómo continuar.")
         TextButton(onClick = { confirmation = "resume" }) { Text("Continuar con mi servidor actual") }
         TextButton(onClick = { confirmation = "restore" }) { Text("Restaurar si el servidor está vacío") }
     }
-    imported?.let { text -> Confirm("Importar aprendizaje", "Se reemplazará la memoria local; no se sobrescribe el servidor automáticamente. Exportá primero una copia de los cambios locales.", { imported = null }) { vm.task { vm.learningRepository.importBackup(text); vm.message.value = "Copia importada; revisá cómo sincronizarla" }; imported = null } }
-    if(confirmation.isNotBlank()) Confirm("Confirmar recuperación", if(confirmation == "resume") "Se comprobará que el servidor conserve los registros de la copia antes de enviar los pendientes." else "Solo se restaurará si el servidor está vacío. No se reemplazarán registros existentes.", { confirmation = "" }) {
+    imported?.let { text -> Confirm("Importar aprendizaje", "Se validará la copia completa y se protegerá la memoria local anterior. El servidor no se reemplaza automáticamente.", { imported = null }) { vm.task { vm.learningRepository.importBackup(text); vm.message.value = "Copia importada; revisá cómo sincronizarla" }; imported = null } }
+    if(confirmation.isNotBlank()) Confirm("Confirmar recuperación", if(confirmation == "previous") "Se recuperará la copia anterior y se conservará la importada como copia protegida." else if(confirmation == "discard") "Se eliminará únicamente la copia local protegida. Exportala primero si querés conservarla." else if(confirmation == "resume") "Se comprobará que el servidor conserve los registros de la copia antes de enviar los pendientes." else "Solo se restaurará si el servidor está vacío. No se reemplazarán registros existentes.", { confirmation = "" }) {
         val action = confirmation; confirmation = ""
-        vm.task { if(action == "resume") vm.learningRepository.resumeImportedBackup() else vm.learningRepository.restoreEmptyServer(); vm.learningRepository.sync(); vm.message.value = "Aprendizaje recuperado y sincronizado" }
+        vm.task {
+            when(action) {
+                "previous" -> { vm.learningRepository.recoverPreviousBackup(); vm.message.value = "Copia anterior recuperada; la importada sigue protegida" }
+                "discard" -> { vm.learningRepository.discardPreviousBackup(); vm.message.value = "Copia protegida descartada" }
+                else -> { if(action == "resume") vm.learningRepository.resumeImportedBackup() else vm.learningRepository.restoreEmptyServer(); vm.learningRepository.sync(); vm.message.value = "Aprendizaje recuperado y sincronizado" }
+            }
+        }
     }
 }

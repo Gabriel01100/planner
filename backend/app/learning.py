@@ -101,7 +101,7 @@ class LearningService:
             return session.id, old is not None
         return self.mutate(owner, 'session.create', change)
 
-    def register_progress(self, owner, command: SessionRegistration, session=None):
+    def register_progress(self, owner, command: SessionRegistration, session=None, occurrence_date=None):
         raw = command.model_dump(mode='json', exclude={'requestId', 'confirmed'}, exclude_defaults=True)
         fingerprint = hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         def change(memory):
@@ -112,12 +112,16 @@ class LearningService:
                     raise HTTPException(409, 'La clave de idempotencia ya se utilizó con otros datos')
                 return receipt.entityId, True
             same = next((r for r in memory.receipts if r.fingerprint == fingerprint), None)
-            if same:
+            if same and command.sourceType != 'manual':
+                # Imported content may be deduplicated, but its new request still
+                # needs a receipt to reject later reuse with different content.
+                memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=same.entityId))
                 return same.entityId, True
             if command.sourceContentDigest and command.sourceType != 'manual':
                 source_ids = {source.id for source in memory.sources if source.contentDigest == command.sourceContentDigest}
                 matching = next((event for event in memory.events if event.goalId == command.goalId and event.sourceReferenceId in source_ids and event.sessionId
                     and any(session.id == event.sessionId and session.completedAt.date() == command.completedAt.date()
+                            and session.activityId == command.activityId and session.occurrenceDate == (command.occurrenceDate or occurrence_date)
                             and (not command.startedAt or session.startedAt == command.startedAt) for session in memory.sessions)
                     and any(topic.id == event.topicId and normalized(topic.title) == normalized(command.topic) and normalized(topic.subject) == normalized(command.subject) for topic in memory.topics)), None)
                 if matching:
@@ -137,6 +141,7 @@ class LearningService:
             memory.sources.append(source)
             session = StudySession(id=session_id, goalId=command.goalId, topicId=topic.id,
                 activityId=command.activityId or (old.activityId if old else None),
+                occurrenceDate=command.occurrenceDate or occurrence_date or (old.occurrenceDate if old else None),
                 startedAt=command.startedAt or (old.startedAt if old else None), completedAt=command.completedAt,
                 plannedMinutes=command.plannedMinutes or (old.plannedMinutes if old else None),
                 actualMinutes=command.actualMinutes, status='completed', notes=command.notes)

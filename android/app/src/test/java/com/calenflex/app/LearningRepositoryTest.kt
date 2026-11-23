@@ -12,13 +12,23 @@ class MemoryLearningDao : LearningDao {
     val stored = MutableStateFlow<LearningStored?>(null)
     override fun observe(): Flow<LearningStored?> = stored
     override suspend fun get() = stored.value
-    override suspend fun put(value: LearningStored) { stored.value = value }
+    var previous: LearningStored? = null
+    override suspend fun recovery() = previous
+    override suspend fun discardRecovery() { previous = null }
+    override suspend fun put(value: LearningStored) { if(value.id == 2) previous = value else stored.value = value }
 }
 class LearningApiFake : FakeApi() {
     var remoteLearning = LearningEnvelope()
     var writes = 0
     var failOnce = false
-    override suspend fun learning() = remoteLearning
+    var failProgressOnce = false
+    var learningCalls = 0
+    var failLearningCall: Int? = null
+    override suspend fun learning(): LearningEnvelope {
+        learningCalls++
+        if(learningCalls == failLearningCall) throw java.io.IOException("network failed during learning pull")
+        return remoteLearning
+    }
     override suspend fun learningInsights() = buildJsonObject { put("items", JsonArray(emptyList())) }
     override suspend fun createLearningGoal(body: JsonObject): MutationDto {
         val old = remoteLearning.memory.rows("goals").any { it.text("id") == body.text("id") }
@@ -26,10 +36,16 @@ class LearningApiFake : FakeApi() {
         if(failOnce) { failOnce = false; throw java.io.IOException("network failed after commit") }
         return MutationDto(remoteLearning.revision, body.text("id"), old, "Saved")
     }
+    override suspend fun correctLearning(body: JsonObject): MutationDto {
+        remoteLearning = LearningEnvelope(remoteLearning.revision + 1,body.getValue("memory").jsonObject)
+        writes++
+        return MutationDto(remoteLearning.revision,UUID.randomUUID().toString(),false,"Restored")
+    }
     override suspend fun registerLearningProgress(body: JsonObject): MutationDto {
         val id = body.text("requestId")
         val old = remoteLearning.memory.rows("sessions").any { it.text("id") == id }
-        if(!old) { remoteLearning = remoteLearning.copy(revision = remoteLearning.revision + 1, memory = remoteLearning.memory.withRows("sessions", remoteLearning.memory.rows("sessions") + buildJsonObject { put("id", id); put("goalId", body.text("goalId")); put("actualMinutes", body["actualMinutes"] ?: JsonNull); put("status", "completed") })); writes++ }
+        if(!old) { remoteLearning = remoteLearning.copy(revision = remoteLearning.revision + 1, memory = remoteLearning.memory.withRows("sessions", remoteLearning.memory.rows("sessions") + buildJsonObject { put("id", id); put("goalId", body.text("goalId")); put("completedAt", body["completedAt"]!!); body["occurrenceDate"]?.let { put("occurrenceDate", it) }; body["activityId"]?.let { put("activityId", it) }; put("actualMinutes", body["actualMinutes"] ?: JsonNull); put("status", "completed") })); writes++ }
+        if(failProgressOnce) { failProgressOnce = false; throw java.io.IOException("network failed after progress commit") }
         return MutationDto(remoteLearning.revision, id, old, "Saved")
     }
 }

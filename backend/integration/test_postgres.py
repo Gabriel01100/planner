@@ -170,3 +170,44 @@ def test_offline_transfer_to_postgres_preserves_revisions_and_refuses_nonempty(
     assert app.state.agenda.read("personal") == before
     destination.state.engine.dispose()
     app.state.engine.dispose()
+
+
+def test_postgres_midnight_learning_and_agenda_rollback_together(database, monkeypatch):
+    from datetime import datetime, timezone
+    from app.models import Slot
+    from app.learning_models import SessionRegistration
+
+    app = create_app(database, "test")
+    goal = LearningGoal(title="Integridad educativa")
+    app.state.learning.create_goal("personal", goal)
+    activity = Activity(title="Diaria", goalId=goal.id, frequency="Diaria", startDate=date(2027, 1, 4))
+    state = State(activities=[activity], schedule=[
+        Slot(activityId=activity.id, date=date(2027, 1, day), start=540, end=600) for day in (4, 5)
+    ])
+    with Session(app.state.engine) as db:
+        app.state.agenda.save(db, "personal", 0, state, "test.setup")
+        app.state.agenda.commit(db)
+    command = SessionRegistration(
+        requestId=uuid4(), goalId=goal.id, activityId=activity.id,
+        occurrenceDate=date(2027, 1, 4), topic="Funciones", confirmed=True,
+        startedAt=datetime(2027, 1, 4, 23, 30, tzinfo=timezone.utc),
+        completedAt=datetime(2027, 1, 5, 3, 30, tzinfo=timezone.utc),
+    )
+    before = (app.state.agenda.read("personal"), app.state.learning.read("personal"))
+    original_save = app.state.agenda.save
+
+    def fail_agenda(*args, **kwargs):
+        raise HTTPException(409, "Injected agenda conflict after learning flush")
+
+    monkeypatch.setattr(app.state.agenda, "save", fail_agenda)
+    with pytest.raises(HTTPException):
+        app.state.learning.register_progress("personal", command)
+    assert (app.state.agenda.read("personal"), app.state.learning.read("personal")) == before
+    monkeypatch.setattr(app.state.agenda, "save", original_save)
+    app.state.learning.register_progress("personal", command)
+    assert [s.completed for s in app.state.agenda.read("personal")[1].schedule] == [True, False]
+    memory = app.state.learning.read("personal")
+    assert memory.memory.sessions[0].occurrenceDate == date(2027, 1, 4)
+    assert app.state.learning.register_progress("personal", command).duplicate
+    assert app.state.learning.read("personal") == memory
+    app.state.engine.dispose()
