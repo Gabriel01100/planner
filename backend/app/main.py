@@ -43,7 +43,7 @@ def create_app(database_url=None, token=None):
             yield
         engine.dispose()
 
-    app = FastAPI(title='CalenFleX', version='1.1.0', lifespan=lifespan)
+    app = FastAPI(title='CalenFleX', version='1.2.0', lifespan=lifespan)
 
     @app.middleware('http')
     async def body_limit(request: Request, call_next):
@@ -64,6 +64,10 @@ def create_app(database_url=None, token=None):
     app.state.learning = service
     app.state.engine = engine
     app.state.agenda = AgendaService(engine)
+    from .synchronization import sync_router
+    from .account_linking import linking_router
+    app.include_router(sync_router(app.state.agenda, access))
+    app.include_router(linking_router(access))
     app.include_router(learning_router(service, access))
     app.include_router(agent_router(service, access))
     app.include_router(planning_router(app.state.agenda, access))

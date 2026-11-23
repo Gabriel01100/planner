@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .database import LearningDocument, AuditEntry
 from .learning_models import (LearningMemory, MemoryEnvelope, MutationResult, LearningGoal,
     LearningMilestone, Topic, StudySession, ProgressEvent, SourceReference, NextStep,
-    SessionRegistration, Receipt, GoalDetails)
+    SessionRegistration, Receipt, GoalDetails, Competency)
 
 
 def normalized(text):
@@ -143,6 +143,21 @@ class LearningService:
                 sourceReferenceId=source.id, evidenceType='confirmed', understood=command.understood,
                 needsReinforcement=command.needsReinforcement, difficulties=command.difficulties,
                 exercises=command.exercises, evaluation=command.evaluation, subtopics=command.subtopics))
+            if command.assessment:
+                evidence = ProgressEvent(goalId=command.goalId, topicId=topic.id, sessionId=session_id,
+                    eventType='assessment', occurredAt=command.completedAt, sourceReferenceId=source.id,
+                    evidenceType='confirmed', description=f'{command.assessment.correctCount}/{command.assessment.totalCount}: {command.assessment.method}',
+                    evaluation='Resultado y confianza declarados explícitamente por el usuario')
+                memory.events.append(evidence)
+                competency = next((c for c in memory.competencies if c.topicId == topic.id), None)
+                if competency is None:
+                    competency = Competency(topicId=topic.id)
+                    memory.competencies.append(competency)
+                competency.estimatedLevel = command.assessment.correctCount / command.assessment.totalCount
+                competency.confidence = command.assessment.confidence
+                competency.lastEvaluatedAt = command.completedAt
+                competency.assessmentMethod = command.assessment.method
+                competency.evidenceIds = list(dict.fromkeys(competency.evidenceIds + [evidence.id]))
             # A statement of understanding is a user report, not an assessment of mastery.
             for description in command.pendingTasks + ([command.recommendedNextTopic] if command.recommendedNextTopic else []):
                 if not any(s.goalId == command.goalId and s.status in ['pending', 'active'] and normalized(s.description) == normalized(description) for s in memory.nextSteps):

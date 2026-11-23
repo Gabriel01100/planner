@@ -206,7 +206,21 @@ class MemoryEnvelope(Contract):
     revision: int = Field(ge=0)
     memory: LearningMemory
 
+class AssessmentData(Contract):
+    correctCount: int = Field(ge=0, le=10000)
+    totalCount: int = Field(ge=1, le=10000)
+    method: str = Field(min_length=1, max_length=1000)
+    # Explicitly supplied estimate, not a calibrated probability or inferred by the LLM.
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode='after')
+    def valid_score(self):
+        if self.correctCount > self.totalCount:
+            raise ValueError('El resultado correcto supera el total evaluado')
+        return self
+
 class SessionRegistration(Contract):
+    assessment: AssessmentData | None = None
     requestId: UUID
     goalId: UUID
     topic: str = Field(min_length=1, max_length=200)

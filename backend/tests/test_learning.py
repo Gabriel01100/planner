@@ -203,7 +203,7 @@ def test_legacy_migration_preserves_exact_payload_and_revision(tmp_path):
     with Session(engine) as db:
         assert db.get(Document, 'personal').revision == 17
         assert db.get(Document, 'personal').payload == original
-        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2, 3, 4]
+        assert db.scalars(select(SchemaVersion.version)).all() == [1, 2, 3, 4, 5]
     with engine.begin() as c:
         c.execute(text("INSERT INTO schema_versions VALUES (99, 'future')"))
     with pytest.raises(RuntimeError, match='más nueva'):
