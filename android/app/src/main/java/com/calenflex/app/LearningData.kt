@@ -162,3 +162,11 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         store(snapshot.copy(envelope = api().learning()))
     }
 }
+
+val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE workspace ADD COLUMN syncBase TEXT")
+        db.execSQL("ALTER TABLE workspace ADD COLUMN syncRequest TEXT")
+        db.execSQL("ALTER TABLE workspace ADD COLUMN conflict TEXT")
+    }
+}

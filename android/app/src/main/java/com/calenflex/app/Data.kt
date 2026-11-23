@@ -34,19 +34,20 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 @Entity(tableName = "workspace")
-data class StoredState(@PrimaryKey val id: Int = 1, val payload: String, val revision: Int = 0, val dirty: Boolean = false)
+data class StoredState(@PrimaryKey val id: Int = 1, val payload: String, val revision: Int = 0, val dirty: Boolean = false, val syncBase: String? = null, val syncRequest: String? = null, val conflict: String? = null)
 @Dao interface StateDao {
     @Query("SELECT * FROM workspace WHERE id = 1") fun observe(): Flow<StoredState?>
     @Query("SELECT * FROM workspace WHERE id = 1") suspend fun get(): StoredState?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(value: StoredState)
 }
-@Database(entities = [StoredState::class, LearningStored::class], version = 2, exportSchema = true)
+@Database(entities = [StoredState::class, LearningStored::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() { abstract fun stateDao(): StateDao; abstract fun learningDao(): LearningDao }
 
 val Context.connectionData by preferencesDataStore("connection")
-data class Connection(val url: String = "", val token: String = "")
+data class Connection(val url: String = "", val token: String = "", val workspaceId: String = "")
 interface ConnectionProvider { suspend fun get(): Connection; suspend fun save(connection: Connection) }
 class ConnectionStore(private val context: Context) : ConnectionProvider {
+    private val workspaceKey = stringPreferencesKey("workspaceId")
     private val urlKey = stringPreferencesKey("url")
     private val tokenKey = stringPreferencesKey("encryptedToken")
     private fun key(): SecretKey {
@@ -68,14 +69,22 @@ class ConnectionStore(private val context: Context) : ConnectionProvider {
     }
     override suspend fun get(): Connection {
         val p = context.connectionData.data.first()
-        return Connection(p[urlKey].orEmpty(), decrypt(p[tokenKey].orEmpty()))
+        return Connection(p[urlKey].orEmpty(), decrypt(p[tokenKey].orEmpty()), p[workspaceKey].orEmpty())
     }
     override suspend fun save(connection: Connection) {
         require(connection.url.isBlank() || connection.url.startsWith("https://")) { "El servidor debe usar HTTPS" }
-        context.connectionData.edit { it[urlKey] = connection.url.trim().trimEnd('/'); it[tokenKey] = encrypt(connection.token.trim()) }
+        context.connectionData.edit { it[urlKey] = connection.url.trim().trimEnd('/'); it[tokenKey] = encrypt(connection.token.trim()); it[workspaceKey] = connection.workspaceId }
     }
 }
 interface Api {
+    @GET("api/v1/connections/links") suspend fun accountLinks(): JsonObject
+    @POST("api/v1/connections/links/{id}/revoke") suspend fun revokeAccountLink(@Path("id") id: String, @Body body: JsonObject): JsonObject
+    @GET("api/v1/connections/identity") suspend fun identity(): JsonObject
+    @POST("api/v1/sync/merge") suspend fun merge(@Body body: MergeCommand): SyncEnvelope
+    @POST("api/v1/planning/automatic") suspend fun automatic(): JsonObject
+    @PUT("api/v1/learning/preferences") suspend fun learningPreferences(@Body body: JsonObject): MutationDto
+    @POST("api/v1/connections/link/start") suspend fun startLink(): JsonObject
+
     @POST("api/v1/learning/resources") suspend fun registerLearningResource(@Body body: JsonObject): MutationDto
     @GET("api/v1/learning/insights") suspend fun learningInsights(): JsonObject
     @GET("api/v1/learning") suspend fun learning(): LearningEnvelope
@@ -100,11 +109,13 @@ class Repository(private val dao: StateDao, val connection: ConnectionProvider, 
         val old = json.decodeFromString<State>(previous.payload)
         val next = change(old).let { it.copy(history = (it.history + Event(Instant.now().toString(), text)).takeLast(10000)) }
         validateState(next)
-        dao.put(previous.copy(payload = json.encodeToString(next), dirty = true))
+        dao.put(previous.copy(payload = json.encodeToString(next), dirty = true, syncRequest = null))
     }
     suspend fun api(): Api {
         apiOverride?.let { return it }
-        val settings = connection.get()
+        return apiFor(connection.get())
+    }
+    private fun apiFor(settings: Connection): Api {
         require(settings.url.startsWith("https://") && settings.token.isNotBlank()) { "Configurá el servidor HTTPS y su credencial en Perfil" }
         val client = OkHttpClient.Builder().callTimeout(40, TimeUnit.SECONDS).addInterceptor { chain ->
             chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer ${settings.token}").build())
@@ -112,24 +123,52 @@ class Repository(private val dao: StateDao, val connection: ConnectionProvider, 
         return Retrofit.Builder().baseUrl(settings.url.trimEnd('/') + "/").client(client)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType())).build().create(Api::class.java)
     }
+    suspend fun configureConnection(url: String, token: String) = mutex.withLock {
+        val old = connection.get()
+        val candidate = Connection(url.trim().trimEnd('/'), token.trim())
+        require(old.url.isBlank() || old.url == candidate.url) { "Exportá ambas copias y borrá los datos de la app antes de cambiar de servidor" }
+        val identity = apiFor(candidate).identity().text("workspaceId")
+        require(identity.isNotBlank()) { "No se pudo verificar el espacio de la conexión" }
+        val previousIdentity = old.workspaceId.ifBlank { if(old.url.isNotBlank() && old.token.isNotBlank()) apiFor(old).identity().text("workspaceId") else "" }
+        require(previousIdentity.isBlank() || previousIdentity == identity) { "La credencial pertenece a otro usuario. Exportá tus datos y usá una instalación separada; no se enviarán a esa cuenta." }
+        connection.save(candidate.copy(workspaceId = identity))
+    }
     suspend fun sync() = mutex.withLock {
         val local = current()
         val api = api()
-        val remote = if (local.dirty) api.push(SyncEnvelope(local.revision, json.decodeFromString(local.payload))) else api.pull()
-        validateState(remote.state)
-        dao.put(StoredState(payload = json.encodeToString(remote.state), revision = remote.revision))
+        try {
+            val remote = if (local.dirty) {
+                if(local.syncBase != null || local.revision == 0) {
+                    val command = local.syncRequest?.let { json.decodeFromString<MergeCommand>(it) }
+                        ?: MergeCommand(revision = local.revision, base = local.syncBase?.let { json.decodeFromString<State>(it) } ?: State(), state = json.decodeFromString(local.payload))
+                    dao.put(local.copy(syncRequest = json.encodeToString(command)))
+                    api.merge(command)
+                } else api.push(SyncEnvelope(local.revision, json.decodeFromString(local.payload))) // legacy baseline: CAS only, never guess
+            } else api.pull()
+            require(remote.revision >= local.revision) { "La revisión remota retrocedió. Conservamos tu copia local." }
+            validateState(remote.state)
+            val payload = json.encodeToString(remote.state)
+            dao.put(StoredState(payload = payload, revision = remote.revision, syncBase = payload))
+        } catch(error: retrofit2.HttpException) {
+            if(error.code() == 409) {
+                val remote = api.pull()
+                val backup = SyncConflictBackup(local.syncBase?.let { json.decodeFromString(it) }, json.decodeFromString(local.payload), remote.state, remote.revision)
+                dao.put(current().copy(conflict = json.encodeToString(backup)))
+            }
+            throw error
+        }
     }
     suspend fun useRemote() = mutex.withLock {
         val remote = api().pull()
         validateState(remote.state)
-        dao.put(StoredState(payload = json.encodeToString(remote.state), revision = remote.revision))
+        dao.put(StoredState(payload = json.encodeToString(remote.state), revision = remote.revision, syncBase = json.encodeToString(remote.state)))
     }
     suspend fun keepLocal() = mutex.withLock {
         val local = current()
         val api = api()
         val remote = api.pull()
         val saved = api.push(SyncEnvelope(remote.revision, json.decodeFromString(local.payload)))
-        dao.put(StoredState(payload = json.encodeToString(saved.state), revision = saved.revision))
+        dao.put(StoredState(payload = json.encodeToString(saved.state), revision = saved.revision, syncBase = json.encodeToString(saved.state)))
     }
     suspend fun applyPlan(base: String, result: PlanResult) = mutex.withLock {
         val local = current()
@@ -139,6 +178,6 @@ class Repository(private val dao: StateDao, val connection: ConnectionProvider, 
         val scheduledIds = result.schedule.map { it.activityId }.toSet()
         val next = old.copy(activities = old.activities.map { a -> if(a.status in listOf("Pendiente", "Programada")) a.copy(status = if(a.id in scheduledIds) "Programada" else "Pendiente") else a }, schedule = result.schedule, pending = result.pending, history = (old.history + Event(Instant.now().toString(), "Planificación aplicada")).takeLast(10000))
         validateState(next)
-        dao.put(local.copy(payload = json.encodeToString(next), dirty = true))
+        dao.put(local.copy(payload = json.encodeToString(next), dirty = true, syncRequest = null))
     }
 }

@@ -62,6 +62,10 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
             OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(goal.title, style = MaterialTheme.typography.titleLarge)
                 if(goal.description.isNotBlank()) Text(goal.description)
+                val topicIds = snapshot.envelope.memory.rows("topics").filter { it.text("goalId") == goal.id }.map { it.text("id") }
+                snapshot.envelope.memory.rows("competencies").filter { it.text("topicId") in topicIds }.forEach { competency ->
+                    Text("Última evaluación: ${competency.text("assessmentMethod")} · nivel ${competency.text("estimatedLevel")} · confianza declarada ${competency.text("confidence")}", style = MaterialTheme.typography.bodySmall)
+                }
                 Text("${sessions.size} ${if(sessions.size == 1) "sesión" else "sesiones"} · $minutes min registrados")
                 if(sessions.any { it.number("actualMinutes") == null }) Text("Hay sesiones con duración desconocida", style = MaterialTheme.typography.bodySmall)
                 goal.estimatedTotalMinutes?.let { target -> LinearProgressIndicator(progress = { (minutes.toFloat() / target).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); Text("Tiempo orientativo: $minutes de $target min; no representa dominio", style = MaterialTheme.typography.labelSmall) }
@@ -111,6 +115,11 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
     var subtopics by remember { mutableStateOf((imported?.get("subtopics") as? JsonArray)?.joinToString("\n") { it.jsonPrimitive.content }.orEmpty()) }
     var exercises by remember { mutableStateOf((imported?.get("exercises") as? JsonArray)?.joinToString("\n") { it.jsonPrimitive.content }.orEmpty()) }
     var evaluation by remember { mutableStateOf(imported?.text("evaluation").orEmpty()) }
+    var assessed by remember { mutableStateOf(false) }
+    var correct by remember { mutableStateOf("") }
+    var total by remember { mutableStateOf("") }
+    var method by remember { mutableStateOf("") }
+    var confidence by remember { mutableStateOf("0.5") }
     var moreDetails by remember { mutableStateOf(imported != null) }
     var notes by remember { mutableStateOf(imported?.text("summary").orEmpty()) }
     var next by remember { mutableStateOf(imported?.text("recommendedNextTopic").orEmpty()) }
@@ -132,6 +141,14 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
         Field("Materia o área (opcional)", subject) { subject = it }
         TextButton(onClick = { moreDetails = !moreDetails }) { Text(if(moreDetails) "Ocultar detalles" else "Agregar subtemas, ejercicios o evaluación") }
         if(moreDetails) {
+            Row { Checkbox(assessed, { assessed = it }); Text("Registrar evaluación con resultados") }
+            if(assessed) {
+                Field("Resultados correctos", correct) { correct = it }
+                Field("Total evaluado", total) { total = it }
+                Field("Método de evaluación", method) { method = it }
+                Field("Confianza declarada (0 a 1)", confidence) { confidence = it }
+                Text("Es una estimación declarada basada en estos resultados, no una certificación de dominio.")
+            }
             Field("Subtemas (uno por línea)", subtopics) { subtopics = it }
             Field("Ejercicios realizados (uno por línea)", exercises) { exercises = it }
             Field("Evaluación, si existe", evaluation) { evaluation = it }
@@ -151,6 +168,11 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
                 if(activityId != null) put("activityId", activityId)
                 if(startedAt != null) put("startedAt", startedAt)
                 if(plannedMinutes != null) put("plannedMinutes", plannedMinutes)
+                if(assessed) {
+                    val c = correct.toInt(); val t = total.toInt(); val f = confidence.toDouble()
+                    require(t in 1..10000 && c in 0..t && f in 0.0..1.0 && method.isNotBlank())
+                    put("assessment", buildJsonObject { put("correctCount",c);put("totalCount",t);put("method",method);put("confidence",f) })
+                }
                 put("subject", subject)
                 put("subtopics", JsonArray(subtopics.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))
                 put("exercises", JsonArray(exercises.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))
@@ -177,14 +199,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
         Row { Checkbox(shareProgress, { shareProgress = it }, enabled = goal != null); Text("Compartir el progreso resumido de este objetivo", Modifier.padding(top = 12.dp)) }
         Field("¿En qué avanzamos?", text) { text = it }
         Text("Al analizar se envían este texto, hasta ocho mensajes recientes y títulos de hasta veinte objetivos activos. El progreso se comparte solo si lo activás. No se envía tu historial completo.", style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { vm.task {
-            val message = text
-            val response = vm.repository.api().analyzeImport(buildJsonObject { put("content", message); put("sourceType", "manual"); put("history", JsonArray(vm.learningConversation.value)); put("includeProgress", shareProgress); goal?.let { put("goalId", it) } })
-            vm.latestLearningProposal.value = response
-            val summary = response["proposal"]?.jsonObject?.text("summary").orEmpty()
-            vm.learningConversation.value = (vm.learningConversation.value + buildJsonObject { put("role", "user"); put("text", message.take(4000)) } + buildJsonObject { put("role", "assistant"); put("text", summary.take(4000)) }).takeLast(8)
-            text = ""
-        } }, enabled = text.isNotBlank()) { Text("Analizar y proponer") }
+        Button(onClick = { vm.analyzeLearning(text, goal, shareProgress) { text = "" } }, enabled = text.isNotBlank()) { Text("Analizar y proponer") }
         OutlinedButton(onClick = importContent) { Text("Pegar contenido compartido") }
         result?.get("proposal")?.jsonObject?.let { proposal ->
             Text(proposal.text("summary"), style = MaterialTheme.typography.titleMedium)

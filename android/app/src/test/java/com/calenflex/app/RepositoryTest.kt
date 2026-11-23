@@ -17,6 +17,13 @@ class FakeConnection : ConnectionProvider {
     override suspend fun save(connection: Connection) {}
 }
 open class FakeApi : Api {
+    override suspend fun accountLinks(): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun revokeAccountLink(id: String, body: kotlinx.serialization.json.JsonObject): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun identity(): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun merge(body: MergeCommand): SyncEnvelope = push(SyncEnvelope(body.revision, body.state))
+    override suspend fun automatic(): kotlinx.serialization.json.JsonObject = error("unused")
+    override suspend fun learningPreferences(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
+    override suspend fun startLink(): kotlinx.serialization.json.JsonObject = error("unused")
     override suspend fun registerLearningResource(body: kotlinx.serialization.json.JsonObject): MutationDto = error("unused")
     override suspend fun learningInsights(): kotlinx.serialization.json.JsonObject = error("unused")
     override suspend fun learning(): LearningEnvelope = error("unused")
@@ -50,7 +57,10 @@ class RepositoryTest {
         api.remote = SyncEnvelope(2, State(activities = listOf(Activity(title = "Remota"))))
         val before = repo.current()
         try { repo.sync(); fail("Expected conflict") } catch(e: IllegalStateException) { }
-        assertEquals(before, repo.current())
+        assertEquals(before.payload, repo.current().payload)
+        assertEquals(before.revision, repo.current().revision)
+        assertTrue(repo.current().dirty)
+        assertNotNull(repo.current().syncRequest)
         assertEquals("Remota", api.remote.state.activities.single().title)
     }
     @Test fun successfulSyncAcknowledgesDirtyVersion() = runTest {

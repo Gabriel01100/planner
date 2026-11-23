@@ -20,7 +20,7 @@ import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 class CalenflexApplication : Application() {
-    val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "calenflex.db").addMigrations(MIGRATION_1_2).build() }
+    val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "calenflex.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build() }
     val repository by lazy { Repository(database.stateDao(), ConnectionStore(this)) }
     val learningRepository by lazy { LearningRepository(database.learningDao()) { repository.api() } }
     override fun onCreate() {
@@ -33,7 +33,7 @@ class CalenflexApplication : Application() {
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         val repo = (applicationContext as CalenflexApplication).repository
-        if (repo.connection.get().url.isBlank()) Result.success() else { repo.sync(); (applicationContext as CalenflexApplication).learningRepository.sync(); scheduleReminders(applicationContext, repo.state.first()); Result.success() }
+        if (repo.connection.get().url.isBlank()) Result.success() else { repo.sync(); (applicationContext as CalenflexApplication).learningRepository.sync(); repo.api().automatic(); repo.sync(); scheduleReminders(applicationContext, repo.state.first()); Result.success() }
     } catch (e: retrofit2.HttpException) { if (e.code() == 409 || e.code() == 401) Result.failure() else Result.retry() }
       catch (e: Exception) { Result.retry() }
 }
@@ -47,7 +47,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val kind = inputData.getString("kind") ?: "before"
         if(kind !in state.preferences.notificationKinds) return Result.success()
         if (slot.completed || activity.status in listOf("Completada", "Cancelada") || !state.preferences.notifications) return Result.success()
-        if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return Result.success()
+        if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return Result.success()
         val intent = PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(applicationContext, "activities")
             .setSmallIcon(android.R.drawable.ic_menu_my_calendar).setContentTitle((if(kind == "overdue") "Actividad atrasada: " else "") + activity.title)

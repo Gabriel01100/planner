@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
+import androidx.room.withTransaction
 import java.time.Instant
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -26,11 +28,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val assistant = MutableStateFlow<AIResponse?>(null)
     private var planBase = ""
     private val taskMutex = Mutex()
-    fun task(block: suspend () -> Unit) {
+    fun task(onSuccess: () -> Unit = {}, block: suspend () -> Unit) {
         viewModelScope.launch {
           taskMutex.withLock {
             busy.value = true
-            try { block() } catch (e: Exception) {
+            try { block(); onSuccess() } catch (e: Exception) {
+                if(e is kotlinx.coroutines.CancellationException) throw e
                 message.value = when (e) {
                     is retrofit2.HttpException -> when(e.code()) {
                         409 -> "Conflicto de sincronización. Exportá una copia y elegí una versión en Perfil."
@@ -49,12 +52,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
           }
         }
     }
-    fun edit(text: String, change: (State) -> State) = task {
+    fun edit(text: String, onSuccess: () -> Unit = {}, change: (State) -> State) = task(onSuccess) {
         repository.edit(text, change)
         withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
         message.value = "Guardado en el teléfono"
     }
-    fun save(activity: Activity) = edit("Actividad guardada: ${activity.title}") { s ->
+    fun save(activity: Activity, onSuccess: () -> Unit = {}) = edit("Actividad guardada: ${activity.title}", onSuccess) { s ->
         val now = Instant.now().toString()
         val next = activity.copy(updatedAt = now, createdAt = activity.createdAt.ifBlank { now })
         val old = s.activities.find { it.id == next.id }
@@ -69,6 +72,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             schedule = s.schedule.filterNot { it.activityId == originalId && it.date == day })
     }
     fun delete(activity: Activity) = edit("Actividad eliminada: ${activity.title}") { s ->
+        require(s.activities.none { activity.id in it.dependencies }) { "Quitá primero esta actividad de las dependencias de otras actividades" }
         s.copy(activities = s.activities.filterNot { it.id == activity.id }, schedule = s.schedule.filterNot { it.activityId == activity.id }, pending = s.pending.filterNot { it.activityId == activity.id })
     }
     fun complete(activity: Activity, date: String? = null) = edit("Actividad completada: ${activity.title}") { s ->
@@ -87,6 +91,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
         message.value = "Planificación aplicada"
     }
+    fun saveGoal(goal: LearningGoalDto, onSuccess: () -> Unit) = task(onSuccess) {
+        if(learningRepository.current().goals().any { it.id == goal.id }) learningRepository.correctGoal(goal) else learningRepository.createGoal(goal)
+        message.value = "Objetivo guardado"
+    }
+    fun recordProgress(body: JsonObject, activity: Activity?, onSuccess: () -> Unit) = task(onSuccess) {
+        (getApplication<Application>() as CalenflexApplication).database.withTransaction {
+            learningRepository.registerProgress(body)
+            if(activity != null) repository.edit("Sesión finalizada") { snapshot ->
+                snapshot.copy(activities = snapshot.activities.map { if(it.id == activity.id && it.frequency == "Única") it.copy(status = "Completada") else it },
+                    schedule = snapshot.schedule.map { if(it.activityId == activity.id && it.date == today(snapshot.preferences.timezone).toString()) it.copy(completed = true) else it })
+            }
+        }
+        withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
+        message.value = "Sesión guardada; podés sincronizarla cuando tengas conexión"
+    }
+    fun analyzeLearning(text: String, goal: String?, includeProgress: Boolean, onSuccess: () -> Unit) = task(onSuccess) {
+        val response = repository.api().analyzeImport(buildJsonObject { put("content", text); put("sourceType", "manual"); put("history", JsonArray(learningConversation.value)); put("includeProgress", includeProgress); goal?.let { put("goalId", it) } })
+        latestLearningProposal.value = response
+        val summary = response["proposal"]?.jsonObject?.text("summary").orEmpty()
+        learningConversation.value = (learningConversation.value + buildJsonObject { put("role","user");put("text",text.take(4000)) } + buildJsonObject { put("role","assistant");put("text",summary.take(4000)) }).takeLast(8)
+    }
+    fun updateAutonomy(enabled: Boolean, shift: Int, moves: Int) = task {
+        require(shift in 5..60 && moves in 0..5)
+        learningRepository.sync()
+        val current = learningRepository.current().envelope
+        val previous = current.memory["preferences"]?.jsonObject ?: buildJsonObject {}
+        val preferences = JsonObject(previous.toMutableMap().apply { put("automaticEnabled",JsonPrimitive(enabled)); put("autonomy",JsonPrimitive(if(enabled) "bounded" else "suggestions"));put("maxShiftMinutes",JsonPrimitive(shift));put("maxAutomaticMoves",JsonPrimitive(moves)) })
+        repository.api().learningPreferences(buildJsonObject { put("revision", current.revision);put("preferences",preferences);put("confirmed",true) })
+        learningRepository.sync(); message.value = "Reglas de autonomía actualizadas"
+    }
+    val linkedAccounts = MutableStateFlow<List<String>>(emptyList())
+    fun loadAccountLinks() = task { linkedAccounts.value = repository.api().accountLinks()["items"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList() }
+    fun unlinkAccount(id: String) = task { repository.api().revokeAccountLink(id, buildJsonObject { put("confirmed",true) }); linkedAccounts.value = linkedAccounts.value - id; message.value = "Vinculación revocada; tus datos se conservaron" }
+    val linkCode = MutableStateFlow("")
+    fun configureConnection(url: String, token: String) = task { repository.configureConnection(url, token); message.value = "Conexión e identidad verificadas" }
+    fun startAccountLink() = task { linkCode.value = repository.api().startLink().text("code") }
     fun sync() = task { repository.sync(); learningRepository.sync(); withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }; message.value = "Sincronización completada" }
     fun ask(text: String) = task { val response = repository.api().ai(AIRequest(text, state.value)); assistant.value = response.copy(proposedActivity = response.proposedActivity?.copy(id = java.util.UUID.randomUUID().toString(), createdAt = "", updatedAt = "")) }
     fun importState(text: String) = task {

@@ -43,7 +43,7 @@ class LearningMigrationTest {
             sqlite.execSQL("INSERT INTO room_master_table VALUES (42, '0969621f53b0312c451b8e6c4ddf8c23')")
             sqlite.version = 1
         }
-        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
         val row = migrated.stateDao().get()!!
         assertEquals(original, row.payload)
         assertEquals(7, row.revision)
