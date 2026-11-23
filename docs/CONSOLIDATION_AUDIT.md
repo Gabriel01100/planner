@@ -1,6 +1,6 @@
 # Auditoría de consolidación — base ab48550
 
-Checkout limpio en main, igual a origin/main; se trabaja en consolidation/product-1.2, con PR hacia main. Se inspeccionaron README, documentación, contratos, servicios, planificador/validador, adaptadores IA/MCP, repositorios Room, navegación, formularios, importación, workers y CI. No se modifica la base local ni se publican sus datos.
+Checkout limpio en main, igual a origin/main; se trabaja en consolidation/product-1.2, con PR hacia main. Se inspeccionaron README, documentación, contratos, servicios, planificador/validador, adaptadores IA/MCP, repositorios Room, navegación, formularios, importación, workers y CI. No se sustituyen registros locales ni se publican sus datos; las migraciones son aditivas.
 
 Base ejecutada: 112 pruebas Python aprobadas, 18 JVM aprobadas; assembleDebug, assembleDebugAndroidTest y lintDebug aprobados. La ejecución previa 45117900855 aprobó los seis tests instrumentados (incluidos los dos antes corregidos); no se confunde ese resultado previo con una nueva ejecución.
 

@@ -36,3 +36,5 @@ El APK de prerelease se genera solo si aprueban los cinco jobs. Es debug, no fir
 
 
 Primera ejecución de esta rama (45203463943): backend, PostgreSQL/contenedor, optimizador y Android aprobaron; los siete instrumentados dieron 0 fallos/0 omitidos. El job falló después al extraer capturas desde cache del paquete. Se cambió la exportación a MediaStore/Pictures para conservarlas tras el cierre de instrumentación; el resultado del rerun final se enlaza en el PR. Se agrega además una octava prueba de concurrencia/rollback de la finalización coordinada.
+
+Ejecución 45204834866: siete de ocho instrumentados aprobaron; el test de creación encontró simultáneamente el título en el formulario y en la tarjeta durante el guardado asíncrono. Se ajustó para esperar cierre exitoso del formulario y una sola tarjeta, sin eliminar la comprobación de visibilidad. La prueba concurrente/rollback y el nuevo calendario aprobaron. Las dos capturas se adjuntan también a la prerelease cuando toda la validación final aprueba.

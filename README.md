@@ -2,7 +2,7 @@
 
 Asistente personal de productividad y aprendizaje: Android nativo, memoria educativa y backend propio. Organiza horarios, registra sesiones y propone próximos pasos con evidencia. Mantiene una interfaz simple y exige revisión para cambios importantes.
 
-[Descargar APK validado](https://github.com/Gabriel01100/planner/releases) · [Estado real y roadmap](docs/ROADMAP.md) · [Pruebas](docs/TESTING.md)
+[Descargar APK validado](https://github.com/Gabriel01100/planner/releases) · [Informe de consolidación](docs/CONSOLIDATION_REPORT.md) · [Estado real y roadmap](docs/ROADMAP.md) · [Pruebas](docs/TESTING.md)
 
 ## Funciones y estado
 

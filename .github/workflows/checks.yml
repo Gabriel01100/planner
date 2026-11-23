@@ -129,10 +129,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: CalenFleX-debug
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android-device-reports
+          path: device-reports
       - name: Publicar APK validado
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           mv app-debug.apk CalenFleX-debug.apk
-          gh release create "android-${GITHUB_SHA:0:7}" CalenFleX-debug.apk --target "$GITHUB_SHA" --prerelease --title "CalenFleX Android" --notes "APK de depuración. Backend, PostgreSQL, comparación experimental, compilación, lint, pruebas JVM y tests instrumentados aprobados en esta ejecución. Requiere servidor HTTPS para planificación, sincronización e IA. Consultar README y docs/TESTING.md para configuración y límites."
+          gh release create "android-${GITHUB_SHA:0:7}" CalenFleX-debug.apk device-reports/reports/screenshots/agenda-month.png device-reports/reports/screenshots/agenda-day.png --target "$GITHUB_SHA" --prerelease --title "CalenFleX Android" --notes "APK de depuración. Backend, PostgreSQL, comparación experimental, compilación, lint, pruebas JVM y tests instrumentados aprobados en esta ejecución. Requiere servidor HTTPS para planificación, sincronización e IA. Consultar README y docs/TESTING.md para configuración y límites."

@@ -14,7 +14,7 @@ class NavigationTest {
         compose.onNodeWithContentDescription("Crear actividad").performClick()
         compose.onNodeWithText("Título").performTextInput("Prueba local")
         compose.onNodeWithText("Guardar actividad").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Prueba local").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Guardar actividad").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithText("Prueba local").fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("Prueba local").assertIsDisplayed()
         compose.onNodeWithText("Agenda").performClick()
         compose.waitUntil(timeoutMillis = 10_000) { runCatching { compose.onNodeWithText("Semana").assertIsDisplayed(); true }.getOrDefault(false) }
@@ -29,12 +29,12 @@ class NavigationTest {
         compose.onNodeWithText("Nuevo objetivo").performClick()
         compose.onNodeWithText("¿Qué querés aprender?").performTextInput("Python sin conexión")
         compose.onNodeWithText("Guardar objetivo").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Python sin conexión").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Guardar objetivo").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithText("Python sin conexión").fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("Registrar sesión").performClick()
         compose.onNodeWithText("Tema trabajado").performTextInput("Funciones")
         compose.onNodeWithText("Duración real en minutos (opcional)").performTextInput("25")
         compose.onNodeWithText("Confirmar y guardar sesión").performScrollTo().performClick()
-        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("1 sesión · 25 min registrados").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithText("Confirmar y guardar sesión").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithText("1 sesión · 25 min registrados").fetchSemanticsNodes().isNotEmpty() }
         compose.activityRule.scenario.recreate()
         compose.onNode(hasText("Objetivos") and hasClickAction()).performClick()
         compose.onNodeWithText("1 sesión · 25 min registrados").assertIsDisplayed()

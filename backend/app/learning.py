@@ -121,6 +121,7 @@ class LearningService:
                             and (not command.startedAt or session.startedAt == command.startedAt) for session in memory.sessions)
                     and any(topic.id == event.topicId and normalized(topic.title) == normalized(command.topic) and normalized(topic.subject) == normalized(command.subject) for topic in memory.topics)), None)
                 if matching:
+                    memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=matching.sessionId))
                     return matching.sessionId, True
             topic = next((t for t in memory.topics if t.goalId == command.goalId and normalized(t.title) == normalized(command.topic) and normalized(t.subject) == normalized(command.subject)), None)
             if not topic:
@@ -183,6 +184,7 @@ class LearningService:
             content_digest = command.contentDigest or fingerprint
             source = next((s for s in memory.sources if s.contentDigest == content_digest and s.sourceType == command.sourceType), None)
             if source and any(e.goalId == command.goalId and e.sourceReferenceId == source.id for e in memory.events):
+                memory.receipts.append(Receipt(goalId=command.goalId, requestId=command.requestId, fingerprint=fingerprint, entityId=source.id))
                 return source.id, True
             if not source:
                 source = SourceReference(sourceType=command.sourceType, sourceTitle=command.title,
