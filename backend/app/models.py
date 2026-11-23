@@ -16,6 +16,7 @@ class Window(BaseModel):
         return self
 
 class Activity(BaseModel):
+    dependencies: list[UUID] = Field(default_factory=list, max_length=100)
     goalId: UUID | None = None
     id: UUID = Field(default_factory=uuid4)
     title: str = Field(min_length=1, max_length=200)
@@ -68,6 +69,7 @@ class Preferences(BaseModel):
     name: str = Field(default='', max_length=100)
     timezone: str = 'America/Argentina/Buenos_Aires'
     theme: Literal['Sistema', 'Claro', 'Oscuro'] = 'Sistema'
+    maxDailyMinutes: int = Field(default=1440, ge=5, le=1440)
     transition: int = Field(default=0, ge=0, le=180)
     reminderMinutes: int = Field(default=15, ge=0, le=1440)
     notifications: bool = True
@@ -111,6 +113,15 @@ class State(BaseModel):
             raise ValueError('Ocurrencias duplicadas')
         if any(s.activityId not in ids for s in self.schedule):
             raise ValueError('Horario sin actividad')
+        known = set(ids)
+        if any(dep not in known or dep == a.id for a in self.activities for dep in a.dependencies):
+            raise ValueError('Dependencia inexistente o propia')
+        remaining = {a.id: set(a.dependencies) for a in self.activities}
+        while remaining:
+            ready = {key for key, deps in remaining.items() if not deps}
+            if not ready:
+                raise ValueError('Dependencias cíclicas')
+            remaining = {key: deps - ready for key, deps in remaining.items() if key not in ready}
         return self
 
 class PlanRequest(BaseModel):
