@@ -8,9 +8,29 @@ from .learning_models import LearningMemory
 
 def transfer(source_url, target_url, apply=False):
     source, target = make_engine(source_url), make_engine(target_url)
-    if source.url == target.url:
+    from pathlib import Path
+
+    same_file = (
+        source.dialect.name == target.dialect.name == "sqlite"
+        and source.url.database
+        and target.url.database
+        and Path(source.url.database).resolve() == Path(target.url.database).resolve()
+    )
+    if source.url == target.url or same_file:
         raise ValueError("El origen y destino deben ser diferentes")
     try:
+        # Reject existing records before even running target migrations/encryption.
+        with target.connect() as destination:
+            existing_target = set(inspect(destination).get_table_names())
+            for table in Base.metadata.sorted_tables:
+                if (
+                    table.name != "schema_versions"
+                    and table.name in existing_target
+                    and destination.scalar(select(func.count()).select_from(table))
+                ):
+                    raise ValueError(
+                        "El destino debe estar vacío; no se modifica ni migra una base con registros"
+                    )
         migrate(target)
         counts = {}
         with source.connect() as origin, target.begin() as destination:

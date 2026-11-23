@@ -137,7 +137,7 @@ private val teal = Color(0xFF006C63)
             val active = if(finishingActive) learning.active else null
             val activity = active?.let { a -> state.activities.find { it.id == a.activityId } }
             val elapsed = active?.let { runCatching { java.time.Duration.between(java.time.Instant.parse(it.startedAt), java.time.Instant.now()).toMinutes().coerceIn(1, 1440).toInt() }.getOrNull() }
-            ProgressEditor(learning, selectedGoal, activity?.title.orEmpty(), elapsed, activity?.id, proposalDraft, startedAt = active?.startedAt, plannedMinutes = activity?.duration, completeWithoutStudy = if(activity == null) null else ({ vm.task { vm.learningRepository.clearActive() }; vm.complete(activity, today(state.preferences.timezone).toString()); progressEditor = false }), dismiss = { progressEditor = false }) { body ->
+            ProgressEditor(learning, selectedGoal, activity?.title.orEmpty(), elapsed, activity?.id, proposalDraft, startedAt = active?.startedAt, plannedMinutes = activity?.duration, timezone = state.preferences.timezone, completeWithoutStudy = if(activity == null) null else ({ vm.finishWithoutStudy(activity) { progressEditor = false } }), dismiss = { progressEditor = false }) { body ->
                 vm.recordProgress(body, activity) { progressEditor = false }
             }
         }
@@ -153,7 +153,7 @@ private val teal = Color(0xFF006C63)
                 OutlinedButton(onClick = { editingProposal = true; editing = Activity(title = draft.text("title"), description = draft.text("description"), duration = draft.number("estimatedMinutes") ?: 45, priority = draft.number("priority") ?: 2, startDate = draft.text("startDate"), deadline = draft.text("deadline").takeIf { it.isNotBlank() }); proposalChoice = null }) { Text("Revisar actividad: ${draft.text("title")}") }
             }
         } }
-        editing?.let { a -> ActivityEditor(a, { editing = null; occurrence = null; editingProposal = false }, advancedInitially = editingProposal, availableActivities = state.activities) { next -> val source = occurrence; if(source == null) vm.save(next) { editing = null; editingProposal = false } else { vm.exception(source.first, source.second, next); editing = null; occurrence = null; editingProposal = false } } }
+        editing?.let { a -> ActivityEditor(a, { editing = null; occurrence = null; editingProposal = false }, advancedInitially = editingProposal, availableActivities = state.activities) { next -> val source = occurrence; if(source == null) vm.save(next) { editing = null; editingProposal = false } else { vm.exception(source.first, source.second, next) { editing = null; occurrence = null; editingProposal = false } } } }
         delete?.let { a -> Confirm("Eliminar actividad", "Se eliminarán ${a.title} y sus horarios. Esta acción se sincronizará con el servidor.", { delete = null }) { vm.delete(a); delete = null } }
         detail?.let { a -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(a.title) }, text = { Column {
             Text(a.description.ifBlank { "Sin descripción" }); Text("${a.category} · ${a.duration} min · ${a.status}")

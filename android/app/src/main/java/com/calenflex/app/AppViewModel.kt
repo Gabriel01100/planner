@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
-import androidx.room.withTransaction
 import java.time.Instant
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -66,7 +65,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         s.copy(activities = s.activities.filterNot { it.id == next.id } + next, pending = s.pending.filterNot { it.activityId == next.id },
             schedule = s.schedule.filter { it.activityId != next.id || it.completed || (timingUnchanged && next.status != "Cancelada") }.map { if(it.activityId == next.id && next.status == "Completada") it.copy(completed = true) else it })
     }
-    fun exception(originalId: String, day: String, replacement: Activity) = edit("Ocurrencia modificada: $day") { s ->
+    fun exception(originalId: String, day: String, replacement: Activity, onSuccess: () -> Unit = {}) = edit("Ocurrencia modificada: $day", onSuccess) { s ->
         require(s.schedule.none { it.activityId == originalId && it.date == day && it.completed }) { "Una ocurrencia completada conserva su horario histórico" }
         s.copy(activities = s.activities.map { if(it.id == originalId) it.copy(skippedDates = (it.skippedDates + day).distinct()) else it } + replacement.copy(createdAt = Instant.now().toString(), updatedAt = Instant.now().toString()),
             schedule = s.schedule.filterNot { it.activityId == originalId && it.date == day })
@@ -76,9 +75,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         s.copy(activities = s.activities.filterNot { it.id == activity.id }, schedule = s.schedule.filterNot { it.activityId == activity.id }, pending = s.pending.filterNot { it.activityId == activity.id })
     }
     fun complete(activity: Activity, date: String? = null) = edit("Actividad completada: ${activity.title}") { s ->
-        s.copy(activities = s.activities.map { if (it.id == activity.id && (date == null || it.frequency == "Única")) it.copy(status = "Completada") else it },
-            schedule = s.schedule.map { if (it.activityId == activity.id && (date == null || it.date == date)) it.copy(completed = true) else it })
+        s.withCompletedActivity(activity.id, date)
     }
+    fun finishWithoutStudy(activity: Activity, onSuccess: () -> Unit) = task(onSuccess) {
+        (getApplication<Application>() as CalenflexApplication).studyCoordinator.finishWithoutStudy(activity.id)
+        withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
+    }
+
     fun generate(days: Int = 7) = task {
         planBase = repository.current().payload
         val snapshot = json.decodeFromString<State>(planBase)
@@ -96,13 +99,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         message.value = "Objetivo guardado"
     }
     fun recordProgress(body: JsonObject, activity: Activity?, onSuccess: () -> Unit) = task(onSuccess) {
-        (getApplication<Application>() as CalenflexApplication).database.withTransaction {
-            learningRepository.registerProgress(body)
-            if(activity != null) repository.edit("Sesión finalizada") { snapshot ->
-                snapshot.copy(activities = snapshot.activities.map { if(it.id == activity.id && it.frequency == "Única") it.copy(status = "Completada") else it },
-                    schedule = snapshot.schedule.map { if(it.activityId == activity.id && it.date == today(snapshot.preferences.timezone).toString()) it.copy(completed = true) else it })
-            }
-        }
+        (getApplication<Application>() as CalenflexApplication).studyCoordinator.register(body, activity?.id)
         withContext(Dispatchers.IO) { scheduleReminders(getApplication(), repository.state.first()) }
         message.value = "Sesión guardada; podés sincronizarla cuando tengas conexión"
     }

@@ -42,6 +42,14 @@ def create_app(database_url=None, token=None):
         engine.dispose()
 
     app = FastAPI(title='CalenFleX', version='1.2.0', lifespan=lifespan)
+    logger = logging.getLogger('calenflex')
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(handler)
+
 
     origins = [v.strip() for v in os.getenv('CORS_ORIGINS', '').split(',') if v.strip()]
     if origins:

@@ -104,7 +104,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
     }
 }
 
-@Composable fun ProgressEditor(snapshot: LearningSnapshot, initialGoal: String?, topicHint: String = "", minutesHint: Int? = null, activityId: String? = null, imported: JsonObject? = null, startedAt: String? = null, plannedMinutes: Int? = null, completeWithoutStudy: (() -> Unit)? = null, dismiss: () -> Unit, save: (JsonObject) -> Unit) {
+@Composable fun ProgressEditor(snapshot: LearningSnapshot, initialGoal: String?, topicHint: String = "", minutesHint: Int? = null, activityId: String? = null, imported: JsonObject? = null, startedAt: String? = null, plannedMinutes: Int? = null, timezone: String = "America/Argentina/Buenos_Aires", completeWithoutStudy: (() -> Unit)? = null, dismiss: () -> Unit, save: (JsonObject) -> Unit) {
     var selected by remember { mutableStateOf(initialGoal) }
     var topic by remember { mutableStateOf(imported?.text("topic")?.takeIf { it.isNotBlank() } ?: topicHint) }
     var actual by remember { mutableStateOf(imported?.number("actualMinutes")?.toString() ?: minutesHint?.toString().orEmpty()) }
@@ -123,7 +123,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
     var moreDetails by remember { mutableStateOf(imported != null) }
     var notes by remember { mutableStateOf(imported?.text("summary").orEmpty()) }
     var next by remember { mutableStateOf(imported?.text("recommendedNextTopic").orEmpty()) }
-    var completedDate by remember { mutableStateOf(today().toString()) }
+    var completedDate by remember { mutableStateOf(today(timezone).toString()) }
     var error by remember { mutableStateOf("") }
     val requestId = remember { UUID.randomUUID().toString() }
     FullDialog("Registrar lo que trabajaste", dismiss) {
@@ -161,7 +161,7 @@ fun goalLabel(goal: LearningGoalDto, goals: List<LearningGoalDto>): String = if(
             val minutes = actual.takeIf { it.isNotBlank() }?.toInt(); require(minutes == null || minutes in 1..1440)
             save(buildJsonObject {
                 put("requestId", requestId); put("goalId", selected!!); put("topic", topic.trim())
-                put("completedAt", java.time.LocalDate.parse(completedDate).atTime(java.time.LocalTime.now(java.time.ZoneId.of("America/Argentina/Buenos_Aires"))).atZone(java.time.ZoneId.of("America/Argentina/Buenos_Aires")).toInstant().toString()); put("actualMinutes", minutes?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("completedAt", java.time.LocalDate.parse(completedDate).atTime(java.time.LocalTime.now(java.time.ZoneId.of(timezone))).atZone(java.time.ZoneId.of(timezone)).toInstant().toString()); put("actualMinutes", minutes?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("notes", notes); put("confirmed", true); put("sourceType", if(imported == null) "manual" else imported.text("_sourceType").ifBlank { "text" })
                 put("understood", JsonArray(understood.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))
                 put("needsReinforcement", JsonArray(reinforce.lines().filter { it.isNotBlank() }.map { JsonPrimitive(it.trim()) }))

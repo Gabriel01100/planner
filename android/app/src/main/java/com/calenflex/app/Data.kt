@@ -99,12 +99,12 @@ interface Api {
     @POST("api/v1/planning/preview") suspend fun plan(@Body body: PlanRequest): PlanResult
     @POST("api/ai") suspend fun ai(@Body body: AIRequest): AIResponse
 }
-class Repository(private val dao: StateDao, val connection: ConnectionProvider, private val apiOverride: Api? = null) {
-    private val mutex = Mutex()
+class Repository(private val dao: StateDao, val connection: ConnectionProvider, private val apiOverride: Api? = null, internal val mutex: Mutex = Mutex()) {
     val stored = dao.observe()
     val state = stored.map { it?.let { json.decodeFromString<State>(it.payload) } ?: State() }
     suspend fun current() = dao.get() ?: StoredState(payload = json.encodeToString(State()))
-    suspend fun edit(text: String, change: (State) -> State) = mutex.withLock {
+    suspend fun edit(text: String, change: (State) -> State) = mutex.withLock { editLocked(text, change) }
+    internal suspend fun editLocked(text: String, change: (State) -> State) {
         val previous = current()
         val old = json.decodeFromString<State>(previous.payload)
         val next = change(old).let { it.copy(history = (it.history + Event(Instant.now().toString(), text)).takeLast(10000)) }

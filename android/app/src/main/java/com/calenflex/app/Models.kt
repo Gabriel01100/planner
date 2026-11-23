@@ -97,3 +97,9 @@ fun freeWindows(state: State, day: LocalDate): List<Pair<Int, Int>> {
     }
     return free
 }
+
+fun State.withCompletedActivity(activityId: String, date: String? = null): State {
+    require(activities.any { it.id == activityId }) { "Actividad no encontrada" }
+    return copy(activities = activities.map { if(it.id == activityId && (date == null || it.frequency == "Única")) it.copy(status = "Completada") else it },
+        schedule = schedule.map { if(it.activityId == activityId && (date == null || it.date == date)) it.copy(completed = true) else it })
+}

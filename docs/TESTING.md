@@ -5,7 +5,7 @@ Base auditada ab48550: 112 backend y 18 JVM reejecutadas, compilación/lint apro
 ## Consolidación local
 
 - Backend: **129 pruebas aprobadas localmente**. Incluye las 112 originales y regresiones de días permitidos, DST, colisiones con completadas, dependencias/carga, merge/reintento/aislamiento, evaluación explícita, vinculación JWT, autorización de preferencias, autonomía opt-in/reversión y coordinación agenda/memoria.
-- Android: assembleDebug, testDebugUnitTest, lintDebug y assembleDebugAndroidTest aprobados localmente. 21 JVM: 18 anteriores más calendario mensual/leap year y sincronización con respuesta perdida/conflicto exportable.
+- Android: assembleDebug, testDebugUnitTest, lintDebug y assembleDebugAndroidTest aprobados localmente. 22 JVM: 18 anteriores más finalización de una ocurrencia sin alterar la serie, calendario mensual/leap year y sincronización con respuesta perdida/conflicto exportable.
 - PostgreSQL 17: cuatro integraciones reales aprobadas: migración/cifrado/aislamiento, concurrencia CAS, reintento/reapertura y transferencia SQLite→PostgreSQL a destino vacío.
 - OAuth web: dos tests Node aprobados con proveedor simulado: PKCE S256/state/recurso/confirmación y rechazo de estado incorrecto/vencido. No son una conexión externa real.
 - CP-SAT: una prueba comparativa cubre nueve escenarios con entradas/reglas/métricas iguales; ambos motores dieron cero conflictos. Resultado reproducible en benchmarks/equivalent-evaluation.json; no demuestra superioridad global.
@@ -30,6 +30,9 @@ Los tests PostgreSQL crean/eliminan exclusivamente esquemas cf_test_UUID de la b
 
 ## CI y dispositivo
 
-CI exige backend + OAuth web, PostgreSQL, experimento y Android; el emulador API 35 ejecuta los seis tests existentes más un flujo de grilla mensual → día → evento → semana. Incluye migración Room 1→3 y copia de agenda histórica. No hay tests desactivados. Este entorno no tiene KVM: la ejecución real de dispositivo se realiza en Actions. Los reportes y capturas del calendario están en el artefacto Android-device-reports. El resultado de la ejecución enlazada en el PR es la fuente de verdad; compilar instrumentados no equivale a ejecutarlos.
+CI exige backend + OAuth web, PostgreSQL, experimento y Android; el emulador API 35 ejecuta los seis tests existentes más un flujo de grilla mensual → día → evento → semana y una prueba transaccional concurrente con rollback de ambos documentos. Incluye migración Room 1→3 y copia de agenda histórica. No hay tests desactivados. Este entorno no tiene KVM: la ejecución real de dispositivo se realiza en Actions. Los reportes y capturas del calendario están en el artefacto Android-device-reports. El resultado de la ejecución enlazada en el PR es la fuente de verdad; compilar instrumentados no equivale a ejecutarlos.
 
 El APK de prerelease se genera solo si aprueban los cinco jobs. Es debug, no firma estable ni Play Store. Comprobar firma con apksigner y paquete/API con aapt. No se hicieron consultas pagas, conexión real ChatGPT/OAuth, despliegue público ni evaluación con participantes. Notificaciones y accesibilidad requieren también verificación en teléfonos reales de distintos fabricantes.
+
+
+Primera ejecución de esta rama (45203463943): backend, PostgreSQL/contenedor, optimizador y Android aprobaron; los siete instrumentados dieron 0 fallos/0 omitidos. El job falló después al extraer capturas desde cache del paquete. Se cambió la exportación a MediaStore/Pictures para conservarlas tras el cierre de instrumentación; el resultado del rerun final se enlaza en el PR. Se agrega además una octava prueba de concurrencia/rollback de la finalización coordinada.

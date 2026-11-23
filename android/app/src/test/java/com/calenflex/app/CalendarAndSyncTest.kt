@@ -57,3 +57,15 @@ class CalendarAndSyncTest {
         assertTrue(repo.current().dirty)
     }
 }
+
+class StudyCompletionTest {
+    @Test fun completingRecurringSessionOnlyChangesItsSelectedDay() {
+        val a = Activity(title="Practicar",frequency="Diaria")
+        val state = State(activities=listOf(a),schedule=listOf(Slot(a.id,"2027-01-04",540,600),Slot(a.id,"2027-01-05",540,600)))
+        val result = state.withCompletedActivity(a.id,"2027-01-04")
+        assertTrue(result.schedule[0].completed)
+        assertFalse(result.schedule[1].completed)
+        assertEquals(a.status,result.activities[0].status)
+        assertFalse(state.schedule[0].completed)
+    }
+}

@@ -8,6 +8,9 @@ on:
         description: Publicar APK en una prerelease después de validar
         type: boolean
         default: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -107,7 +110,7 @@ jobs:
           script: |
             adb shell input keyevent 82
             ./gradlew --stacktrace connectedDebugAndroidTest
-            adb pull /sdcard/Android/data/com.calenflex.app/cache/screenshots app/build/reports/screenshots
+            adb pull /sdcard/Pictures/CalenflexTests app/build/reports/screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

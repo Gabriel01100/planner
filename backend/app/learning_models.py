@@ -270,6 +270,7 @@ class MutationResult(Contract):
     message: str
 
 class GoalDetails(Contract):
+    competencies: list[Competency] = Field(default_factory=list)
     goal: LearningGoal
     completedMinutes: int
     completedSessions: int

@@ -21,8 +21,10 @@ import java.util.concurrent.TimeUnit
 
 class CalenflexApplication : Application() {
     val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "calenflex.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build() }
-    val repository by lazy { Repository(database.stateDao(), ConnectionStore(this)) }
-    val learningRepository by lazy { LearningRepository(database.learningDao()) { repository.api() } }
+    private val storageMutex = kotlinx.coroutines.sync.Mutex()
+    val repository by lazy { Repository(database.stateDao(), ConnectionStore(this), mutex = storageMutex) }
+    val learningRepository by lazy { LearningRepository(database.learningDao(), storageMutex) { repository.api() } }
+    val studyCoordinator by lazy { StudyCoordinator(database, repository, learningRepository) }
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("activities", "Actividades", NotificationManager.IMPORTANCE_DEFAULT))

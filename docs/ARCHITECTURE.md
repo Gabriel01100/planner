@@ -1,6 +1,6 @@
 # Arquitectura
 
-Android nativo (Compose/Material 3) observa Room mediante StateFlow. AppViewModel coordina acciones, estados de carga/errores y guardados; los repositorios validan y persisten. MainActivity contiene el ciclo de vida y composición de rutas; CalendarScreen, ActivityScreens, SettingsScreen y LearningScreens separan responsabilidades visuales. No hay claves de IA en Android. Hay cuatro destinos principales y configuración secundaria.
+Android nativo (Compose/Material 3) observa Room mediante StateFlow. AppViewModel coordina acciones, estados de carga/errores y guardados; StudyCoordinator serializa la transacción educativa/agenda con los repositorios antes de abrir Room; los repositorios validan y persisten. MainActivity contiene el ciclo de vida y composición de rutas; CalendarScreen, ActivityScreens, SettingsScreen y LearningScreens separan responsabilidades visuales. No hay claves de IA en Android. Hay cuatro destinos principales y configuración secundaria.
 
 FastAPI y MCP son adaptadores de entrada de los mismos servicios. LearningWorkflow coordina el registro educativo y la finalización de agenda en una transacción. LearningService administra la memoria y AgendaService la agenda con comparación optimista de revisión. El agente devuelve propuestas tipadas; no recibe herramientas de escritura ni conexiones SQL. planning_rules contiene restricciones compartidas por generador, validador y experimento CP-SAT. autonomy aplica exclusivamente el subconjunto autorizado y conserva reversión.
 

@@ -199,7 +199,7 @@ class LearningService:
         memory = self.read(owner).memory
         goal = self.goal(memory, goal_id)
         completed = [s for s in memory.sessions if s.goalId == goal_id and s.status == 'completed']
-        return GoalDetails(goal=goal, completedMinutes=sum(s.actualMinutes or 0 for s in completed),
+        return GoalDetails(goal=goal, competencies=[c for c in memory.competencies if c.topicId in {t.id for t in memory.topics if t.goalId == goal_id}], completedMinutes=sum(s.actualMinutes or 0 for s in completed),
             completedSessions=len(completed), unknownDurationSessions=sum(s.actualMinutes is None for s in completed),
             milestones=sorted([m for m in memory.milestones if m.goalId == goal_id], key=lambda m: m.order),
             topics=[t for t in memory.topics if t.goalId == goal_id],

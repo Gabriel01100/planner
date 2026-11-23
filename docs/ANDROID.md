@@ -10,7 +10,7 @@ cd android
 
 APK: app/build/outputs/apk/debug/app-debug.apk. Abrir el directorio android en Android Studio y sincronizar Gradle. En Configuración guardar URL HTTPS y credencial del propio espacio; se verifica identidad antes de aceptar un cambio de credencial. No usar localhost desde un teléfono. El trabajo local no requiere servidor, pero IA/planificación/sync sí.
 
-AppViewModel coordina guardados, errores y carga. LearningWorkflow del servidor y una transacción Room local conservan coherencia entre una sesión finalizada y su agenda. Los errores no cierran formularios importantes. Cancelación de corrutinas se propaga. Pantallas y componentes están separados por responsabilidad; persiste un ViewModel de aplicación compartida, sin capas genéricas artificiales.
+AppViewModel coordina guardados, errores y carga. LearningWorkflow del servidor y una transacción Room local conservan coherencia entre una sesión finalizada y su agenda. StudyCoordinator toma el bloqueo compartido de los repositorios antes de abrir la transacción Room, para evitar inversión de bloqueos con sync. Los errores no cierran formularios importantes. Cancelación de corrutinas se propaga. Pantallas y componentes están separados por responsabilidad; persiste un ViewModel de aplicación compartida, sin capas genéricas artificiales.
 
 Room migra 1→2→3 sin destrucción. Agenda y aprendizaje tienen agregados y revisiones independientes. Cola educativa y comando de sincronización son persistentes. SYNC.md describe conflictos y recuperación. Android asocia la instalación a un espacio; no es un selector multicuenta.
 

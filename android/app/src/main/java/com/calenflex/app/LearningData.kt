@@ -42,8 +42,7 @@ fun JsonObject.number(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrN
 fun JsonObject.withRows(key: String, rows: List<JsonObject>) = JsonObject(toMutableMap().apply { put(key, JsonArray(rows)) })
 fun LearningSnapshot.goals(): List<LearningGoalDto> = envelope.memory.rows("goals").map { json.decodeFromJsonElement(it) }
 
-class LearningRepository(private val dao: LearningDao, private val api: suspend () -> Api) {
-    private val mutex = Mutex()
+class LearningRepository(private val dao: LearningDao, internal val mutex: Mutex = Mutex(), private val api: suspend () -> Api) {
     val snapshots = dao.observe().map { it?.let { json.decodeFromString<LearningSnapshot>(it.payload) } ?: LearningSnapshot() }
     suspend fun current() = dao.get()?.let { json.decodeFromString<LearningSnapshot>(it.payload) } ?: LearningSnapshot()
     private suspend fun store(snapshot: LearningSnapshot) { dao.put(LearningStored(payload = json.encodeToString(snapshot))) }
@@ -61,8 +60,10 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         require(snapshot.active == null) { "Finalizá la sesión que está en curso" }
         store(snapshot.copy(active = ActiveStudy(activityId, Instant.now().toString())))
     }
-    suspend fun clearActive() = mutex.withLock { store(current().copy(active = null)) }
-    suspend fun registerProgress(body: JsonObject) = mutex.withLock {
+    suspend fun clearActive() = mutex.withLock { clearActiveLocked() }
+    internal suspend fun clearActiveLocked() { store(current().copy(active = null)) }
+    suspend fun registerProgress(body: JsonObject) = mutex.withLock { registerProgressLocked(body) }
+    internal suspend fun registerProgressLocked(body: JsonObject) {
         val snapshot = current()
         require(snapshot.goals().any { it.id == body.text("goalId") }) { "Elegí el objetivo de esta sesión" }
         require(body.text("topic").isNotBlank() && body.text("topic").length <= 200) { "Indicá el tema trabajado" }
@@ -78,7 +79,7 @@ class LearningRepository(private val dao: LearningDao, private val api: suspend 
         body.text("sourceContentDigest").takeIf { it.isNotBlank() }?.let { require(it.matches(Regex("[0-9a-f]{64}"))) }
 
         UUID.fromString(body.text("requestId")); val completedAt = Instant.parse(body.text("completedAt")); body.text("startedAt").takeIf { it.isNotBlank() }?.let { require(!Instant.parse(it).isAfter(completedAt)) { "La fecha de finalización es anterior al inicio" } }
-        if(snapshot.pending.any { it.body.text("requestId") == body.text("requestId") }) return@withLock
+        if(snapshot.pending.any { it.body.text("requestId") == body.text("requestId") }) return
         val local = buildJsonObject {
             put("id", body.text("sessionId").ifBlank { body.text("requestId") }); put("goalId", body.text("goalId"))
             put("completedAt", body.text("completedAt")); put("status", "completed")

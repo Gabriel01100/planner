@@ -135,7 +135,7 @@ def test_postgres_sync_receipt_replay_and_roundtrip(database):
 
 
 def test_offline_transfer_to_postgres_preserves_revisions_and_refuses_nonempty(
-    database, tmp_path
+    database, tmp_path, monkeypatch
 ):
     from app.transfer import transfer
 
@@ -156,8 +156,17 @@ def test_offline_transfer_to_postgres_preserves_revisions_and_refuses_nonempty(
         destination.state.learning.read("personal").memory.goals[0].title
         == "Transferir sin duplicar"
     )
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("CALENFLEX_DATA_KEY", Fernet.generate_key().decode())
     with pytest.raises(ValueError):
         transfer(source, database, True)
+    with destination.state.engine.connect() as connection:
+        assert (
+            not connection.exec_driver_sql("SELECT payload FROM documents")
+            .scalar()
+            .startswith("enc:v1:")
+        )
     assert app.state.agenda.read("personal") == before
     destination.state.engine.dispose()
     app.state.engine.dispose()
